@@ -1,0 +1,173 @@
+name: uasnack
+
+x-app-env: &app-env
+  APP_NAME: ${APP_NAME}
+  APP_ENV: production
+  APP_DEBUG: false
+  APP_KEY: ${APP_KEY}
+  APP_URL: ${APP_URL}
+  DB_CONNECTION: pgsql
+  DB_HOST: db
+  DB_PORT: 5432
+  DB_DATABASE: ${DB_DATABASE}
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  MONGODB_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/${MONGODB_DATABASE}?authSource=${MONGODB_DATABASE}
+  MONGODB_DATABASE: ${MONGODB_DATABASE}
+  CACHE_STORE: redis
+  SESSION_DRIVER: database
+  QUEUE_CONNECTION: redis
+  BROADCAST_CONNECTION: reverb
+  REVERB_APP_ID: ${REVERB_APP_ID}
+  REVERB_APP_KEY: ${REVERB_APP_KEY}
+  REVERB_APP_SECRET: ${REVERB_APP_SECRET}
+  REVERB_HOST: ${REVERB_HOST}
+  REVERB_PORT: ${REVERB_PORT}
+  REVERB_SCHEME: ${REVERB_SCHEME}
+  MAIL_MAILER: smtp
+  MAIL_HOST: ${MAIL_HOST}
+  MAIL_PORT: ${MAIL_PORT}
+  MAIL_USERNAME: ${MAIL_USERNAME}
+  MAIL_PASSWORD: ${MAIL_PASSWORD}
+  MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
+  MAIL_FROM_NAME: ${APP_NAME}
+  FCM_PROJECT_ID: ${FCM_PROJECT_ID}
+  FCM_CREDENTIALS: ${FCM_CREDENTIALS}
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    image: uasnack/app:prod
+    container_name: uasnack_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - app-public:/var/www/html/public
+    environment:
+      <<: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+    networks:
+      - uasnack_net
+
+  webserver:
+    image: nginx:1.27-alpine
+    container_name: uasnack_nginx
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-8002}:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - app-public:/var/www/html/public:ro
+    depends_on:
+      - app
+    networks:
+      - uasnack_net
+
+  db:
+    image: postgres:18
+    container_name: uasnack_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - uasnack-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - uasnack_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: uasnack_redis
+    restart: unless-stopped
+    volumes:
+      - uasnack-redis:/data
+    networks:
+      - uasnack_net
+
+  mongodb:
+    image: mongo:7
+    container_name: uasnack_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE}
+      MONGO_APP_USERNAME: ${MONGO_USERNAME}
+      MONGO_APP_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - uasnack-mongo-data:/data/db
+      - ./docker/mongo/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - uasnack_net
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    image: uasnack/app:prod
+    container_name: uasnack_queue
+    restart: unless-stopped
+    command: php artisan queue:work --tries=3 --backoff=5
+    working_dir: /var/www/html
+    environment:
+      <<: *app-env
+    depends_on:
+      - app
+      - redis
+    networks:
+      - uasnack_net
+
+  reverb:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    image: uasnack/app:prod
+    container_name: uasnack_reverb
+    restart: unless-stopped
+    # Escucha adentro en 0.0.0.0:8080 (default de Reverb); afuera solo el
+    # nginx "recepcionista" del host le habla, via 127.0.0.1:8003.
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    working_dir: /var/www/html
+    ports:
+      - "127.0.0.1:8003:8080"
+    environment:
+      <<: *app-env
+    depends_on:
+      - app
+      - redis
+    networks:
+      - uasnack_net
+
+networks:
+  uasnack_net:
+    driver: bridge
+
+volumes:
+  uasnack-postgres:
+  uasnack-redis:
+  uasnack-mongo-data:
+  app-public:

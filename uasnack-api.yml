@@ -1,0 +1,20 @@
+stages:
+  - deploy
+
+variables:
+  DEPLOY_PATH: /srv/apps/uasnack/api
+
+deploy_api:
+  stage: deploy
+  tags:
+    - home-server
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  script:
+    - mkdir -p "$DEPLOY_PATH"
+    - rsync -a --delete --exclude='.git' --exclude='.env' "$CI_PROJECT_DIR"/ "$DEPLOY_PATH"/
+    - cd "$DEPLOY_PATH"
+    - test -f .env || (echo "Falta $DEPLOY_PATH/.env -- copia .env.production.example a .env y llenalo a mano (solo la primera vez)" && exit 1)
+    - docker compose -f docker-compose.prod.yml build
+    - docker compose -f docker-compose.prod.yml up -d
+    - docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force
