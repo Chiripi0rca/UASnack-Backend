@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\DominiosInstitucional;
 use App\Models\Usuario;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -17,6 +18,7 @@ class DatabaseSeeder extends Seeder
     {
        $this->call([ // esta clase es para correr los seeders 
             JerarquiaInstitucionalSeeder::class,
+            DominiosInstitucionalesSeeder::class,
             UsuarioSeeder::class,
             TiendaSeeder::class,
             CapacidadFranjaSeeder::class,
