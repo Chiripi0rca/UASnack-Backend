@@ -3,9 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Laravel\Sanctum\HasApiTokens;
 
 class Usuario extends Model
 {
+    // Trait de Sanctum: le da al modelo el método createToken() (usado en AuthController::login)
+    // y la relación con la tabla personal_access_tokens, donde se guardan los tokens de sesión.
+    // Sin este trait, el login no puede generar el token.
+    use HasApiTokens;
     CONST CREATED_AT = 'creado_en';  //aqui le decimos a Eloquent que el campo creado_en es el que se va a usar para la fecha de creacion del registro
     CONST UPDATED_AT = null;
 
