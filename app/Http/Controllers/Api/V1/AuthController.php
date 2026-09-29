@@ -40,17 +40,22 @@ class AuthController extends Controller
             'reenviar_en_segundos' => 60,
         ], 201);
     }
-    
+        
+        // Recibe correo y contraseña, y si son correctos devuelve un token de Sanctum.
         public function login(LoginRequest $request): JsonResponse
     {
+        // Se busca al usuario por su correo, strtolower evita problemas por mayúsculas,
         $usuario = Usuario::where('correo_institucional', strtolower($request->correo_institucional))->first();
 
+        // Si el correo no existe O la contraseña no coincide con el hash guardado, se responde lo mismo.
         if (! $usuario || ! Hash::check($request->password, $usuario->hash_password)) {
             return $this->errorCredenciales();
         }
 
         return response()->json([
+            // createToken genera el token en la tabla personal_access_tokens, plainTextToken es el texto que el cliente enviará como "Bearer <token>".
             'token' => $usuario->createToken('cliente')->plainTextToken,
+            // only() elige qué datos salen. Se deja fuera hash_password y todo lo sensible.
             'usuario' => $usuario->only([
                 'id', 'nombre', 'apellido', 'correo_institucional',
                 'id_facultad', 'reputacion', 'correo_verificado_en',
@@ -58,13 +63,16 @@ class AuthController extends Controller
         ]);
     }
 
+    // Borra solo el token con el que se hizo la petición, así que esa sesión deja de funcionar de inmediato
     public function logout(Request $request): Response
     {
         $request->user()->currentAccessToken()->delete();
 
+        // 204 = todo bien, sin contenido que devolver.
         return response()->noContent();
     }
 
+    // Respuesta de error para credenciales incorrectas (401). Para que la web y Android muestren el mensaje tal cual lo manda el servidor.
     private function errorCredenciales(): JsonResponse
     {
         return response()->json([

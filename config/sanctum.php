@@ -18,6 +18,8 @@ return [
     |
     */
 
+     // Dominios que usarían autenticación por cookies (sesión). UASnack NO la usa:
+    // los tres clientes se autentican con token Bearer, así que este valor no interviene.
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
         'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
@@ -37,6 +39,7 @@ return [
     |
     */
 
+    //Si ningún guard autentica la petición, Sanctum revisa el token Bearer del header Authorization.
     'guard' => ['web'],
 
     /*
@@ -50,7 +53,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // ÚNICO CAMBIO NUESTRO: minutos que dura un token de login antes de vencer.
+    // 60 min * 24 h * 7 días = 7 días. Pasado ese tiempo la API responde 401
+    'expiration' => 60 * 24 * 7,
 
     /*
     |--------------------------------------------------------------------------
@@ -65,6 +70,7 @@ return [
     |
     */
 
+    // Texto opcional al inicio de cada token. Vacío por defecto (sin prefijo).
     'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
 
     /*
@@ -78,6 +84,8 @@ return [
     |
     */
 
+    // Middleware que Sanctum usa solo en el modo de sesión por cookies (SPA).
+    // Con tokens Bearer no se utilizan.
     'middleware' => [
         'authenticate_session' => AuthenticateSession::class,
         'encrypt_cookies' => EncryptCookies::class,
