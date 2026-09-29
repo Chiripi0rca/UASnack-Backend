@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Laravel\Sanctum\HasApiTokens;
 
 class Usuario extends Model
 {
+    use HasApiTokens;
     CONST CREATED_AT = 'creado_en';  //aqui le decimos a Eloquent que el campo creado_en es el que se va a usar para la fecha de creacion del registro
     CONST UPDATED_AT = null;
 

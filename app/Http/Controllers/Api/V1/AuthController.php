@@ -9,6 +9,10 @@ use App\Models\VerificacionCorreo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 
+use App\Http\Requests\LoginRequest;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+
 class AuthController extends Controller
 {
     public function registro(RegistrarUsuarioRequest $request): JsonResponse
@@ -35,5 +39,39 @@ class AuthController extends Controller
             'mensaje' => 'Usuario registrado exitosamente. Se ha enviado un código de verificación al correo institucional.',
             'reenviar_en_segundos' => 60,
         ], 201);
+    }
+    
+        public function login(LoginRequest $request): JsonResponse
+    {
+        $usuario = Usuario::where('correo_institucional', strtolower($request->correo_institucional))->first();
+
+        if (! $usuario || ! Hash::check($request->password, $usuario->hash_password)) {
+            return $this->errorCredenciales();
+        }
+
+        return response()->json([
+            'token' => $usuario->createToken('cliente')->plainTextToken,
+            'usuario' => $usuario->only([
+                'id', 'nombre', 'apellido', 'correo_institucional',
+                'id_facultad', 'reputacion', 'correo_verificado_en',
+            ]),
+        ]);
+    }
+
+    public function logout(Request $request): Response
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->noContent();
+    }
+
+    private function errorCredenciales(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'codigo' => 'CREDENCIALES_INVALIDAS',
+                'mensaje' => 'Correo o contraseña incorrectos.',
+            ],
+        ], 401);
     }
 }
