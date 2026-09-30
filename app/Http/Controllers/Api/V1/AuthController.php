@@ -52,13 +52,23 @@ class AuthController extends Controller
             return $this->errorCredenciales();
         }
 
+        // La verificación se revisa DESPUÉS de la contraseña ademas sin correo verificado no se entrega token
+        if (! $usuario->correo_verificado_en) {
+            return response()->json([
+                'error' => [
+                    'codigo' => 'CORREO_NO_VERIFICADO',
+                    'mensaje' => 'Verifica tu correo institucional para iniciar sesión.',
+                ],
+            ], 403);
+        }
+
         return response()->json([
             // createToken genera el token en la tabla personal_access_tokens, plainTextToken es el texto que el cliente enviará como "Bearer <token>".
             'token' => $usuario->createToken('cliente')->plainTextToken,
             // only() elige qué datos salen. Se deja fuera hash_password y todo lo sensible.
             'usuario' => $usuario->only([
                 'id', 'nombre', 'apellido', 'correo_institucional',
-                'id_facultad', 'reputacion', 'correo_verificado_en',
+                'id_facultad', 'rol', 'reputacion', 'correo_verificado_en',
             ]),
         ]);
     }
