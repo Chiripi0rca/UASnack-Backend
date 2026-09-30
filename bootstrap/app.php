@@ -5,6 +5,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Auth\AuthenticationException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -32,6 +34,34 @@ return Application::configure(basePath: dirname(__DIR__))
                         'campos' => $e->errors(),
                     ],
                 ], 422);
+            }
+        });
+
+        // 429: demasiados intentos (throttle). Antes salía en inglés y con el trace completo.
+        // $e->getHeaders() reenvía Retry-After y X-RateLimit-*, que la web usa para el contador.
+        // El mensaje no lleva los segundos porque la web ya agrega "Intenta de nuevo en 0:43".
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'codigo' => 'DEMASIADOS_INTENTOS',
+                        'mensaje' => 'Demasiados intentos.',
+                    ],
+                ], 429, $e->getHeaders());
+            }
+        });
+
+        // 401 de auth:sanctum: el token venció, fue revocado o no se mandó.
+        // Es distinto del 401 del login (CREDENCIALES_INVALIDAS): el cliente los distingue
+        // por el campo codigo. Aplica a toda ruta protegida, no solo al logout.
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'codigo' => 'NO_AUTENTICADO',
+                        'mensaje' => 'Tu sesión expiró. Inicia sesión de nuevo.',
+                    ],
+                ], 401);
             }
         });
     })->create();
