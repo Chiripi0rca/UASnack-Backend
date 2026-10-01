@@ -9,6 +9,9 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Auth\AuthenticationException;
 
+use App\Http\Middleware\CorreoVerificado;
+
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
@@ -19,7 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Alias para usarlo en las rutas como ->middleware('correo.verificado').
+        // Siempre después de auth:sanctum, porque necesita saber quién es el usuario.
+        $middleware->alias([
+            'correo.verificado' => CorreoVerificado::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

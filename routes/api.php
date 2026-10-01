@@ -27,3 +27,11 @@ Route::post('/auth/verificar', [AuthController::class, 'verificar'])
 // throttle:3,1 = máximo 3 por minuto, para que nadie use la API para llenar de spam un correo.
 Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
     ->middleware('throttle:3,1');
+
+// Rutas de pedidos: solo usuarios con sesión (auth:sanctum) Y con el correo verificado (correo.verificado).
+// Si el correo no está verificado responde 403 CORREO_NO_VERIFICADO antes de llegar al controlador.
+// El orden importa: primero auth:sanctum (¿quién eres?) y después correo.verificado (¿ya verificaste?).
+Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
+    // Aquí va POST /pedidos cuando exista PedidoController (tarea 49), por ejemplo:
+    // Route::post('/pedidos', [PedidoController::class, 'crear'])->middleware('throttle:10,1');
+});
