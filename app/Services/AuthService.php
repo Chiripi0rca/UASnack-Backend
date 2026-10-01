@@ -6,6 +6,7 @@ use App\Exceptions\ErrorNegocio;
 use App\Models\Usuario;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 
 // Registro, inicio y cierre de sesión. Lo del código de verificación lo delega a VerificacionCorreoService.
 class AuthService
@@ -64,7 +65,10 @@ class AuthService
     // Borra solo el token con el que se hizo la petición
     public function cerrarSesion(Usuario $usuario): void
     {
-        $usuario->currentAccessToken()->delete();
+        $token = $usuario->currentAccessToken();
+        if ($token instanceof PersonalAccessToken){
+            $token->delete();
+        }
     }
 
     // Único lugar donde se crea el token de Sanctum
