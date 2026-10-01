@@ -15,6 +15,12 @@ class RegistrarUsuarioRequest extends FormRequest
         return true; // Laravel llama esta funcion primero antes de registrarse si el usuario esta autorizado para hacer la peticion,
         // en este caso siempre va a ser true porque cualquier usuario puede registrarse
     }
+    protected function prepareForValidation(): void
+{
+    $this->merge([
+        'correo_institucional' => strtolower($this->correo_institucional ?? ''),
+    ]);
+}
 
     public function rules(): array // regrasa una arreglo asociativo
     {
