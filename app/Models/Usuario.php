@@ -2,17 +2,26 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class Usuario extends Model
+// Hereda de Authenticatable (no de Model) para que Laravel lo reconozca como el usuario que inicia sesión:
+// así $request->user() y auth()->user() devuelven un Usuario y el provider de config/auth.php puede validarlo.
+class Usuario extends Authenticatable
 {
-    // Trait de Sanctum: le da al modelo el método createToken() (usado en AuthController::login)
+    // Trait de Sanctum: le da al modelo el método createToken() (usado en AuthService::crearSesion)
     // y la relación con la tabla personal_access_tokens, donde se guardan los tokens de sesión.
     // Sin este trait, el login no puede generar el token.
     use HasApiTokens;
     CONST CREATED_AT = 'creado_en';  //aqui le decimos a Eloquent que el campo creado_en es el que se va a usar para la fecha de creacion del registro
     CONST UPDATED_AT = null;
+
+    // Laravel busca la contraseña en la columna "password"; aquí se llama hash_password.
+    protected $authPasswordName = 'hash_password';
+
+    // La tabla usuarios no tiene columna remember_token ("recordarme" es de sesiones web, aquí se usan tokens de Sanctum).
+    // Vacío = Laravel no intenta leerla ni guardarla.
+    protected $rememberTokenName = '';
 
     protected $fillable = [ //aqui le decimos a Eloquent que campos se pueden llenar y cuales no, en este caso le decimos que los campos que se pueden llenar son los siguientes
         'nombre',
