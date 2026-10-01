@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use App\Exceptions\ErrorNegocio;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Auth\AuthenticationException;
@@ -62,6 +63,20 @@ return Application::configure(basePath: dirname(__DIR__))
                         'mensaje' => 'Tu sesión expiró. Inicia sesión de nuevo.',
                     ],
                 ], 401);
+            }
+        });
+
+        // Errores de negocio que lanzan los servicios (CODIGO_INVALIDO, CREDENCIALES_INVALIDAS, etc.).
+        // El servicio decide código, mensaje, status y headers; aquí solo se le da la forma del proyecto.
+        // $e->headers sirve para mandar Retry-After en REENVIO_MUY_PRONTO y que arranque el contador de la web.
+        $exceptions->render(function (ErrorNegocio $e, Request $request) {
+            if ($request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'codigo' => $e->codigo,
+                        'mensaje' => $e->getMessage(),
+                    ],
+                ], $e->status, $e->headers);
             }
         });
     })->create();

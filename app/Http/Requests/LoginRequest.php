@@ -13,6 +13,12 @@ class LoginRequest extends FormRequest
     {
         return true;
     }
+    protected function prepareForValidation(): void
+{
+    $this->merge([
+        'correo_institucional' => strtolower($this->correo_institucional ?? ''),
+    ]);
+}
 
     // Reglas de validación de lo que llega en el cuerpo (JSON) de la petición.
     public function rules(): array
