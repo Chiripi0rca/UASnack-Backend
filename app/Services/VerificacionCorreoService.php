@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Mail\CodigoVerificacionMail;
+use Illuminate\Support\Facades\Mail;
+use Throwable;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Usuario;
 use App\Models\VerificacionCorreo;
@@ -22,11 +25,15 @@ class VerificacionCorreoService
 
     // Invalida los códigos pendientes, genera uno nuevo y lo guarda cifrado
     public function enviarCodigo(Usuario $usuario): void
-    {
+{
+    DB::transaction(function () use ($usuario) {
+
         VerificacionCorreo::where('id_usuario', $usuario->id)
             ->where('tipo', 'verificacion')
             ->whereNull('consumido_en')
-            ->update(['consumido_en' => now()]);
+            ->update([
+                'consumido_en' => now()
+            ]);
 
         $codigo = (string) random_int(100000, 999999);
 
@@ -37,12 +44,35 @@ class VerificacionCorreoService
             'expira_en' => now()->addMinutes(self::MINUTOS_EXPIRACION),
         ]);
 
-        // TODO: conectar aquí el envío del correo con el código ($usuario->correo_institucional y $codigo).
-        // Mientras tanto, en local el código se escribe en storage/logs/laravel.log para poder probar.
-        if (app()->environment('local')) {
-            Log::info("Código de verificación para {$usuario->correo_institucional}: {$codigo}");
+        try {
+
+            Mail::to($usuario->correo_institucional)
+                ->send(
+                    new CodigoVerificacionMail(
+                        $codigo,
+                        $usuario->nombre
+                    )
+                );
+
+        } catch (Throwable $e) {
+
+            Log::error(
+                'No fue posible enviar el código de verificación.',
+                [
+                    'usuario_id' => $usuario->id,
+                    'destinatario' => $usuario->correo_institucional,
+                    'exception' => $e::class,
+                ]
+            );
+
+            throw new ErrorNegocio(
+                'CORREO_NO_ENVIADO',
+                'No fue posible enviar el código de verificación. Intenta nuevamente.',
+                503
+            );
         }
-    }
+    });
+}
 
     // Valida el código y marca el correo como verificado. Devuelve el usuario ya verificado.
     public function verificar(string $correo, string $codigo): Usuario
