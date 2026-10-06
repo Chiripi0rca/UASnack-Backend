@@ -10,6 +10,8 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Auth\AuthenticationException;
 
 use App\Http\Middleware\CorreoVerificado;
+use App\Http\Middleware\EsRol;
+use App\Http\Middleware\ResolverTenant;
 
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -24,8 +26,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Alias para usarlo en las rutas como ->middleware('correo.verificado').
         // Siempre después de auth:sanctum, porque necesita saber quién es el usuario.
+        // "rol" y "tenant" son esqueletos del Sprint 02: los completa la tarea 162.
         $middleware->alias([
             'correo.verificado' => CorreoVerificado::class,
+            'rol' => EsRol::class,
+            'tenant' => ResolverTenant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
