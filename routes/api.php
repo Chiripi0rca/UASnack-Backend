@@ -4,6 +4,13 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use Illuminate\Support\Facades\Route;
 
+// Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas SOLO dentro de su bloque,
+// así dos ramas que tocan este archivo no chocan en git.
+
+
+// Público y autenticación
+
+
 Route::get('/facultades', [FacultadController::class, 'obtenerFacultades']);
 Route::post('/auth/registro', [AuthController::class, 'registro']);
 
@@ -28,6 +35,18 @@ Route::post('/auth/verificar', [AuthController::class, 'verificar'])
 Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
     ->middleware('throttle:3,1');
 
+
+// Alumno: catálogo (HU-03). Con sesión.
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    // #46: GET /tiendas, GET /tiendas/{id}/productos y GET /productos/{id}
+});
+
+
+// Alumno: pedidos. Con sesión y correo verificado.
+
+
 // Rutas de pedidos: solo usuarios con sesión (auth:sanctum) Y con el correo verificado (correo.verificado).
 // Si el correo no está verificado responde 403 CORREO_NO_VERIFICADO antes de llegar al controlador.
 // El orden importa: primero auth:sanctum (¿quién eres?) y después correo.verificado (¿ya verificaste?).
@@ -35,3 +54,27 @@ Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
     // Aquí va POST /pedidos cuando exista PedidoController (tarea 49), por ejemplo:
     // Route::post('/pedidos', [PedidoController::class, 'crear'])->middleware('throttle:10,1');
 });
+
+// Panel de tienda (encargado). Prefijo /tienda.
+// "rol" y "tenant" todavía son esqueletos (los completa la tarea 162): ya puedes agregar tus rutas,
+// pero mientras la tarea 162 no esté en dev no se revisa el rol. Nada de esto llega a main sin la tarea 162.
+
+
+Route::prefix('tienda')
+    ->middleware(['auth:sanctum', 'rol:encargado_tienda', 'tenant'])
+    ->group(function () {
+        // #99: GET/POST/PATCH /tienda/productos y PATCH /tienda/productos/{id}/stock
+    });
+
+
+// Panel de administración. Prefijo /admin.
+// "rol" y "tenant" todavía son esqueletos (los completa la tarea 162): ya puedes agregar tus rutas,
+// pero mientras la tarea 162 no esté en dev no se revisa el rol. Nada de esto llega a main sin la tarea 162.
+
+
+Route::prefix('admin')
+    ->middleware(['auth:sanctum', 'rol:administrador', 'tenant'])
+    ->group(function () {
+        // #102: GET/POST/PATCH /admin/tiendas
+        // #104: GET /admin/encargados
+    });
