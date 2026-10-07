@@ -25,9 +25,11 @@ class Tienda extends Model
         'umbral_espera_min',
     ];
 
-    // Relaciones 
-    // El cast de "activa" a booleano lo agregala tarea 101 junto con su migración.
+    protected $casts = [
+        'activa' => 'boolean',
+    ];
 
+    // Relaciones
     public function facultad(): BelongsTo
     {
         return $this->belongsTo(Facultades::class, 'id_facultad');
