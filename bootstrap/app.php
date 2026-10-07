@@ -8,6 +8,8 @@ use App\Exceptions\ErrorNegocio;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 use App\Http\Middleware\CorreoVerificado;
 use App\Http\Middleware\EsRol;
@@ -26,12 +28,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Alias para usarlo en las rutas como ->middleware('correo.verificado').
         // Siempre después de auth:sanctum, porque necesita saber quién es el usuario.
-        // "rol" y "tenant" son esqueletos del Sprint 02: los completa la tarea 162.
+        // "rol" deja pasar solo a ciertos roles y "tenant" resuelve la facultad y la tienda (tarea 162).
         $middleware->alias([
             'correo.verificado' => CorreoVerificado::class,
             'rol' => EsRol::class,
             'tenant' => ResolverTenant::class,
         ]);
+
+        // Laravel busca los modelos de la ruta ({producto}) en SubstituteBindings, que normalmente
+        // corre ANTES que los middlewares de la ruta. Si fuera así, el global scope (#163) aún no
+        // sabría la tienda del encargado y podría entregarle un producto ajeno.
+        // Con esto, "rol" y "tenant" corren primero (después de auth:sanctum).
+        $middleware->prependToPriorityList(before: SubstituteBindings::class, prepend: EsRol::class);
+        $middleware->prependToPriorityList(before: SubstituteBindings::class, prepend: ResolverTenant::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
@@ -75,6 +84,21 @@ return Application::configure(basePath: dirname(__DIR__))
                         'mensaje' => 'Tu sesión expiró. Inicia sesión de nuevo.',
                     ],
                 ], 401);
+            }
+        });
+
+        // 404: la ruta no existe o el recurso no se encontró. Incluye:
+        //   - un modelo que no aparece porque el global scope lo ocultó (producto de otra tienda, #163);
+        //   - una policy que niega con denyAsNotFound().
+        // Siempre 404 y nunca 403 ante lo ajeno: un 403 confirmaría que el recurso existe.
+        $exceptions->render(function (HttpException $e, Request $request) {
+            if ($request->is('api/*') && $e->getStatusCode() === 404) {
+                return response()->json([
+                    'error' => [
+                        'codigo' => 'NO_ENCONTRADO',
+                        'mensaje' => 'No encontramos lo que buscas.',
+                    ],
+                ], 404);
             }
         });
 
