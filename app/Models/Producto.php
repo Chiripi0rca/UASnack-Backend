@@ -2,9 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\DeLaTiendaDelEncargado;
+use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+// Si quien pide es un encargado, solo ve los productos de su tienda (#163).
+#[ScopedBy([DeLaTiendaDelEncargado::class])]
 class Producto extends Model
 {
     protected $table = 'productos';
@@ -22,8 +26,7 @@ class Producto extends Model
         'estado_producto',
     ];
 
-    // Relaciones 
-    // El global scope por tienda lo agrega la tarea 163.
+    // Relaciones
 
     public function tienda(): BelongsTo
     {
