@@ -1,3 +1,4 @@
+```php
 <?php
 
 use Illuminate\Foundation\Application;
@@ -46,7 +47,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
-        // 422: esto codigo es para cuando llegan datos invalidos
+
+        // 422: código para cuando llegan datos inválidos
         $exceptions->render(function (ValidationException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json([
@@ -55,7 +57,9 @@ return Application::configure(basePath: dirname(__DIR__))
                         'mensaje' => 'Revisa los datos marcados.',
                         'campos' => $e->errors(),
                     ],
-                ], 422);
+                ], 422, [
+                    'Content-Type' => 'application/json; charset=UTF-8',
+                ]);
             }
         });
 
@@ -69,7 +73,10 @@ return Application::configure(basePath: dirname(__DIR__))
                         'codigo' => 'DEMASIADOS_INTENTOS',
                         'mensaje' => 'Demasiados intentos.',
                     ],
-                ], 429, $e->getHeaders());
+                ], 429, array_merge(
+                    $e->getHeaders(),
+                    ['Content-Type' => 'application/json; charset=UTF-8']
+                ));
             }
         });
 
@@ -83,7 +90,9 @@ return Application::configure(basePath: dirname(__DIR__))
                         'codigo' => 'NO_AUTENTICADO',
                         'mensaje' => 'Tu sesión expiró. Inicia sesión de nuevo.',
                     ],
-                ], 401);
+                ], 401, [
+                    'Content-Type' => 'application/json; charset=UTF-8',
+                ]);
             }
         });
 
@@ -112,7 +121,10 @@ return Application::configure(basePath: dirname(__DIR__))
                         'codigo' => $e->codigo,
                         'mensaje' => $e->getMessage(),
                     ],
-                ], $e->status, $e->headers);
+                ], $e->status, array_merge(
+                    $e->headers,
+                    ['Content-Type' => 'application/json; charset=UTF-8']
+                ));
             }
         });
     })->create();
