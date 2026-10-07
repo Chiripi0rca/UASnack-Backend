@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Usuario;
+use App\Enums\RolUsuario;
 use Illuminate\Support\Facades\Hash;
 
 class UsuarioSeeder extends Seeder
@@ -20,6 +21,7 @@ class UsuarioSeeder extends Seeder
             'id_facultad' => 1,
             'hash_password' => Hash::make('password'),
             'telefono' => '1122334455',
+            'rol' => RolUsuario::Admin,
         ]);
 
         Usuario::create([
@@ -29,6 +31,7 @@ class UsuarioSeeder extends Seeder
             'id_facultad' => 1,
             'hash_password' => Hash::make('password'),
             'telefono' => '1234567890',
+            'rol' => RolUsuario::Encargado_Tienda,
         ]);
     }
 }

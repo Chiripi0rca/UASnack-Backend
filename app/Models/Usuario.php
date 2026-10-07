@@ -32,6 +32,7 @@ class Usuario extends Authenticatable
         'hash_password',
         'telefono',
         'terminos_aceptados_en',
+        'rol',
     ];
 
     protected $hidden = [ //aqui le decimos a Eloquent que el campo hash_password no se va a mostrar en la respuesta de la API es la contra parte de la propiedad $fillable, que es para decirle a Eloquent que campos se pueden llenar y cuales no, en este caso le decimos que el campo hash_password no se puede llenar desde la API
