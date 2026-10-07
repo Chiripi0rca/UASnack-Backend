@@ -18,7 +18,6 @@ class Producto extends Model
         'nombre',
         'descripcion',
         'precio',
-        'disponible',
         'stock_hoy',
         'tiempo_prep_min',
         'tiempo_prep_max',
