@@ -19,6 +19,11 @@ class TiendaSeeder extends Seeder
             'encargado.pruebas@info.uas.edu.mx'
         )->firstOrFail();
 
+        $encargado2 = Usuario::where(
+        'correo_institucional',
+        'encargado2.pruebas@info.uas.edu.mx'
+        )->firstOrFail();
+
         $tiendas = [
             [
                 'id_facultad' => 1,
@@ -34,7 +39,7 @@ class TiendaSeeder extends Seeder
             [
                 'id_facultad' => 1,
                 'nombre' => 'Cafeteria de la FIC 2',
-                'id_dueno' => 2,
+                'id_dueno' => $encargado2->id,
                 'ubicacion' => 'Esta al lado del modulo A cerca del estacionamiento de maestros',
                 'horario_apertura' => '08:00',
                 'horario_cierre' => '18:00',

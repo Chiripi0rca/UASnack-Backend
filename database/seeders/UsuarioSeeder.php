@@ -38,5 +38,20 @@ class UsuarioSeeder extends Seeder
         $encargado->rol = RolUsuario::Encargado_Tienda;
         $encargado->correo_verificado_en = now();
         $encargado->save();
+        
+        // Usuario de prueba: encargado de la tienda 2
+        $encargado2 = Usuario::create([
+        'nombre' => 'Encargado',
+        'apellido' => 'Pruebas 2',
+        'correo_institucional' => 'encargado2.pruebas@info.uas.edu.mx',
+        'id_facultad' => 1,
+        'hash_password' => Hash::make('Encargado212345'),
+        'telefono' => '6671000003',
+    ]);
+
+       $encargado2->rol = RolUsuario::Encargado_Tienda;
+       $encargado2->correo_verificado_en = now();
+       $encargado2->save();
+
     }
 }
