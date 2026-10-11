@@ -2,33 +2,56 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
+use App\Enums\RolUsuario;
 use App\Models\Usuario;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
 class UsuarioSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        Usuario::create([
-            'nombre' => 'Ricardo',
-            'apellido' => 'Ramos',
-            'correo_institucional' => 'r.ramos22@info.uas.edu.mx',
+        // Usuario de prueba: administrador
+        $admin = Usuario::create([
+            'nombre' => 'Admin',
+            'apellido' => 'Pruebas',
+            'correo_institucional' => 'admin.pruebas@info.uas.edu.mx',
             'id_facultad' => 1,
-            'hash_password' => Hash::make('password'),
-            'telefono' => '1122334455',
+            'hash_password' => Hash::make('Admin12345'),
+            'telefono' => '6671000001',
         ]);
 
-        Usuario::create([
-            'nombre' => 'Cesar',
-            'apellido' => 'Burgos',
-            'correo_institucional' => 'ca.burgos22@info.uas.edu.mx',
+        $admin->rol = RolUsuario::Admin;
+        $admin->correo_verificado_en = now();
+        $admin->save();
+
+        // Usuario de prueba: encargado de tienda
+        $encargado = Usuario::create([
+            'nombre' => 'Encargado',
+            'apellido' => 'Pruebas',
+            'correo_institucional' => 'encargado.pruebas@info.uas.edu.mx',
             'id_facultad' => 1,
-            'hash_password' => Hash::make('password'),
-            'telefono' => '1234567890',
+            'hash_password' => Hash::make('Encargado12345'),
+            'telefono' => '6671000002',
         ]);
+
+        $encargado->rol = RolUsuario::Encargado_Tienda;
+        $encargado->correo_verificado_en = now();
+        $encargado->save();
+        
+        // Usuario de prueba: encargado de la tienda 2
+        $encargado2 = Usuario::create([
+        'nombre' => 'Encargado',
+        'apellido' => 'Pruebas 2',
+        'correo_institucional' => 'encargado2.pruebas@info.uas.edu.mx',
+        'id_facultad' => 1,
+        'hash_password' => Hash::make('Encargado212345'),
+        'telefono' => '6671000003',
+    ]);
+
+       $encargado2->rol = RolUsuario::Encargado_Tienda;
+       $encargado2->correo_verificado_en = now();
+       $encargado2->save();
+
     }
 }
