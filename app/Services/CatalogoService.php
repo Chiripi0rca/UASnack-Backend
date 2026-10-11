@@ -119,6 +119,41 @@ class CatalogoService
     
     }
 
+    public function producto(int $id): array
+    {
+        //se trae el producto mediante el id
+        $producto = Producto::withoutGlobalScopes()->find($id);
+
+        if(! $producto){
+            $this->noEncontrado();
+        }
+
+        //veririca que su tienda este activa y pide el catalogo
+        //se toma solo este este producto para que el detalle siempre coincida con la lista
+        $detalle = $this->productosDe($this->tiendaActiva($producto->id_tienda))
+            ->firstWhere('id', $producto->id);
+
+        if(! $detalle){
+            $this->noEncontrado();
+        }
+
+        return $detalle;
+    }
+
+     // Devuelve la tienda si existe y está activa; si no, lanza 404.
+    // Inexistente y de baja dan el mismo error, para no revelar cuál es cuál.
+    public function tiendaActiva(int $id): tienda
+    {
+        //busca por id, solo entre las activas, si no hay se queda en null
+        $tienda = Tienda::where('activa', true)->find($id);
+
+        if(! $tienda){
+            $this->noEncontrado();
+        }
+
+        return $tienda;
+    }
+
     // la tarea 49: total calculado en el servidor: (precio + extras) × cantidad. Nunca usa precios del cliente.
     // $lineas: [['id_producto' => 1, 'cantidad' => 2, 'extras' => [...]], ...]
     // El descuento por franja llega en la HU-20 (la tarea  262): déjale un punto marcado para aplicarlo.
@@ -131,5 +166,11 @@ class CatalogoService
     public function sincronizarMongo(Producto $producto): void
     {
         throw new LogicException('Pendiente: #165');
+    }
+
+    // Un solo lugar para el 404. "never" avisa a PHP que siempre lanza excepción.
+    private function noEncontrado(): never
+    {
+        throw new ErrorNegocio('NO_ENCONTRADO', 'No encontramos lo que buscas.', 404);
     }
 }
