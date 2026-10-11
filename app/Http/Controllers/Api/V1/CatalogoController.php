@@ -40,6 +40,10 @@ class CatalogoController extends Controller
         $detalle = $this->catalogo->producto($id); //aqui se manda el id para traer el detalle del producto 
 
         //se manda un solo producto
-        return response()->json((new ProductoResource(($detalle))->resolve($request)));
+       return response()->json([
+            'datos' => (new ProductoResource($detalle))->resolve($request),
+        ]);
+
+        
     }
 }

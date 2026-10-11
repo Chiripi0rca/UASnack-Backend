@@ -43,8 +43,8 @@ Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
 Route::middleware('auth:sanctum')->group(function () {
     // #46: GET /tiendas, GET /tiendas/{id}/productos y GET /productos/{id}
     Route::get('/tiendas', [TiendaController::class, 'obtenerTiendas']);
-    Route::get('/tiendas/{id}/productos', [CatalogoController::class, 'productos']);
-    Route::get('/productos/{id}', [CatalogoController::class, 'detalleProducto']);
+    Route::get('/tiendas/{id}/productos', [CatalogoController::class, 'productos'])->whereNumber('id');
+    Route::get('/productos/{id}', [CatalogoController::class, 'detalleProducto'])->whereNumber('id');
 });
 
 
