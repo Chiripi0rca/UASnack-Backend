@@ -1,7 +1,8 @@
 <?php
-
+use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\FacultadController;
+use App\Http\Controllers\Api\V1\TiendaController;
 use Illuminate\Support\Facades\Route;
 
 // Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas SOLO dentro de su bloque,
@@ -41,6 +42,9 @@ Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
 
 Route::middleware('auth:sanctum')->group(function () {
     // #46: GET /tiendas, GET /tiendas/{id}/productos y GET /productos/{id}
+    Route::get('/tiendas', [TiendaController::class, 'obtenerTiendas']);
+    Route::get('/tiendas/{id}/productos', [CatalogoController::class, 'productos'])->whereNumber('id');
+    Route::get('/productos/{id}', [CatalogoController::class, 'detalleProducto'])->whereNumber('id');
 });
 
 
