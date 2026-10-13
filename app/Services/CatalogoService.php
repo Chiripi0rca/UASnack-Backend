@@ -6,6 +6,7 @@ use App\Documents\CatalogoDinamico;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Producto;
 use App\Models\Tienda;
+use App\Models\Usuario;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -153,6 +154,7 @@ class CatalogoService
 
         return $tienda;
     }
+
 
     // la tarea 49: total calculado en el servidor: (precio + extras) × cantidad. Nunca usa precios del cliente.
     // $lineas: [['id_producto' => 1, 'cantidad' => 2, 'extras' => [...]], ...]
