@@ -155,15 +155,6 @@ class CatalogoService
         return $tienda;
     }
 
-    // Todas las tiendas (activas y de baja) para el panel del administrador.
-    // El campo "activa" de cada una le dice al panel cuál mostrar como baja.
-    public function tiendasAdmin(Usuario $admin): Collection
-    {
-        return Tienda::with(['facultad', 'dueno'])
-            ->where('id_facultad', $admin->id_facultad)
-            ->orderBy('nombre')
-            ->get();
-    }
 
     // la tarea 49: total calculado en el servidor: (precio + extras) × cantidad. Nunca usa precios del cliente.
     // $lineas: [['id_producto' => 1, 'cantidad' => 2, 'extras' => [...]], ...]

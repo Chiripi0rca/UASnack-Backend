@@ -41,16 +41,13 @@ class TiendaAdminService
             );
         }
 
-        // create() .
         $tienda = Tienda::create([
             'nombre'           => $datos['nombre'],
             'ubicacion'        => $datos['ubicacion'],
             'horario_apertura' => $datos['horario_apertura'],
             'horario_cierre'   => $datos['horario_cierre'],
             // La facultad sale del admin, NUNCA del cliente:
-            // así un admin no puede crear tiendas en otra facultad.
             'id_facultad'      => $admin->id_facultad,
-            'id_dueno'         => $datos['id_dueno'],
              'cupo_bajo_demanda' => self::CUPO_BAJO_DEMANDA_INICIAL,
             'umbral_espera_min' => self::UMBRAL_ESPERA_MIN_INICIAL,
         ]);
