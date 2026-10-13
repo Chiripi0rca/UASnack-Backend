@@ -3,6 +3,7 @@ use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\TiendaController;
+use App\Http\Controllers\Api\V1\TiendaAdminController;
 use Illuminate\Support\Facades\Route;
 
 // Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas SOLO dentro de su bloque,
@@ -80,5 +81,9 @@ Route::prefix('admin')
     ->middleware(['auth:sanctum', 'rol:administrador', 'tenant'])
     ->group(function () {
         // #102: GET/POST/PATCH /admin/tiendas
+        Route::get('/tiendas', [TiendaAdminController::class, 'obtenerTiendas']);
+        Route::post('/tiendas', [TiendaAdminController::class, 'crearTienda']);
+        Route::patch('/tiendas/{id}', [TiendaAdminController::class, 'actualizarTienda'])
+        ->whereNumber('id');
         // #104: GET /admin/encargados
     });

@@ -6,6 +6,7 @@ use App\Documents\CatalogoDinamico;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Producto;
 use App\Models\Tienda;
+use App\Models\Usuario;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -152,6 +153,16 @@ class CatalogoService
         }
 
         return $tienda;
+    }
+
+    // Todas las tiendas (activas y de baja) para el panel del administrador.
+    // El campo "activa" de cada una le dice al panel cuál mostrar como baja.
+    public function tiendasAdmin(Usuario $admin): Collection
+    {
+        return Tienda::with(['facultad', 'dueno'])
+            ->where('id_facultad', $admin->id_facultad)
+            ->orderBy('nombre')
+            ->get();
     }
 
     // la tarea 49: total calculado en el servidor: (precio + extras) × cantidad. Nunca usa precios del cliente.
