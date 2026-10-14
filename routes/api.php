@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
+use App\Http\Controllers\Api\V1\ProductoPanelController;
 use App\Http\Resources\UsuarioResource;
 use Illuminate\Support\Facades\Route;
 // Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas
@@ -68,8 +69,12 @@ Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
 Route::prefix('tienda')
     ->middleware(['auth:sanctum', 'rol:encargado_tienda', 'tenant'])
     ->group(function () {
-        // #99: GET/POST/PATCH /tienda/productos
-        // y PATCH /tienda/productos/{id}/stock
+       Route::get('/productos', [ProductoPanelController::class, 'obtenerProductos']);
+        Route::post('/productos', [ProductoPanelController::class, 'crearProducto']);
+        Route::patch('/productos/{id}', [ProductoPanelController::class, 'actualizarProducto'])
+            ->whereNumber('id');
+        Route::patch('/productos/{id}/stock', [ProductoPanelController::class, 'actualizarStock'])
+            ->whereNumber('id');
     });
 
 
