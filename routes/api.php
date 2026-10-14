@@ -4,9 +4,9 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\TiendaController;
+use App\Http\Controllers\Api\V1\TiendaAdminController;
 use App\Http\Resources\UsuarioResource;
 use Illuminate\Support\Facades\Route;
-
 // Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas
 // SOLO dentro de su bloque, así dos ramas que tocan este archivo no chocan en git.
 
@@ -81,16 +81,30 @@ Route::prefix('tienda')
 Route::prefix('admin')
     ->middleware(['auth:sanctum', 'rol:administrador', 'tenant'])
     ->group(function () {
-        // Asignar o cambiar el encargado de una tienda.
+        // HU-31: Asignar o cambiar el encargado de una tienda.
         Route::patch(
             '/tiendas/{id}/encargado',
             [TiendaController::class, 'asignarEncargado']
         )->whereNumber('id');
 
-        // #102: Conserva aquí las demás rutas administrativas.
+        // #102: GET/POST/PATCH /admin/tiendas
+        Route::get(
+            '/tiendas',
+            [TiendaAdminController::class, 'obtenerTiendas']
+        );
+
+        Route::post(
+            '/tiendas',
+            [TiendaAdminController::class, 'crearTienda']
+        );
+
+        Route::patch(
+            '/tiendas/{id}',
+            [TiendaAdminController::class, 'actualizarTienda']
+        )->whereNumber('id');
+
         // #104: GET /admin/encargados
     });
-
 
 // Consulta la sesión actual.
 
