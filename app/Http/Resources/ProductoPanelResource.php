@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\OpcionProducto;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -26,6 +27,15 @@ class ProductoPanelResource extends JsonResource
             'estado_producto' => $this->estado_producto instanceof \BackedEnum
                 ? $this->estado_producto->value
                 : $this->estado_producto,
+            // Opciones propias del producto (HU-04), para editarlas en el panel.
+            'extras' => $this->opciones
+                ->where('tipo', OpcionProducto::EXTRA)
+                ->map(fn (OpcionProducto $o) => ['id' => $o->id, 'nombre' => $o->nombre, 'precio' => (float) $o->precio])
+                ->values(),
+            'quitables' => $this->opciones
+                ->where('tipo', OpcionProducto::QUITABLE)
+                ->map(fn (OpcionProducto $o) => ['id' => $o->id, 'nombre' => $o->nombre])
+                ->values(),
         ];
     }
 }

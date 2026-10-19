@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             CapacidadFranjaSeeder::class,
             CategoriaSeeder::class,
             ProductoSeeder::class,
+            CatalogoDinamicoSeeder::class, // copia a Mongo las opciones de cada producto
             DescuentoSeeder::class,
             ]);
         

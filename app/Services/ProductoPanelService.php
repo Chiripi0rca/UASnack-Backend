@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Enums\EstadoProducto;
 use App\Exceptions\ErrorNegocio;
+use App\Models\OpcionProducto;
 use App\Models\Producto;
 use App\Models\Tienda;
 use App\Models\Usuario;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 // Lógica del catálogo que administra el encargado desde su panel.
@@ -18,6 +20,7 @@ class ProductoPanelService
     public function productosDe(Usuario $encargado): Collection
     {
         return Producto::where('id_tienda', $this->idTiendaDe($encargado))
+            ->with('opciones')
             ->orderBy('nombre')
             ->get();
     }
@@ -36,9 +39,13 @@ class ProductoPanelService
         // El estado lo decide el servidor según el stock inicial.
         $producto->estado_producto = $this->estadoSegunStock($datos['stock_hoy']);
 
-        $producto->save();
+        // Producto y opciones en la misma transacción: no queda un producto a medias.
+        DB::transaction(function () use ($producto, $datos) {
+            $producto->save();
+            $this->guardarOpciones($producto, $datos);
+        });
 
-        return $producto->fresh();
+        return $producto->fresh('opciones');
     }
 
     // Edita datos del producto.
@@ -56,9 +63,12 @@ class ProductoPanelService
             ]);
         }
 
-        $producto->save();
+        DB::transaction(function () use ($producto, $datos) {
+            $producto->save();
+            $this->guardarOpciones($producto, $datos);
+        });
 
-        return $producto->fresh();
+        return $producto->fresh('opciones');
     }
 
     // Cambia el stock del día. 0 = agotado; más de 0 = disponible otra vez.
@@ -71,7 +81,34 @@ class ProductoPanelService
         $producto->estado_producto = $this->estadoSegunStock($stock);
         $producto->save();
 
-        return $producto->fresh();
+        return $producto->fresh('opciones');
+    }
+
+    // Extras y quitables del producto (HU-04). Cada lista que llega reemplaza a la anterior
+    // de ese tipo; la que no llega se queda como estaba.
+    private function guardarOpciones(Producto $producto, array $datos): void
+    {
+        $listas = [
+            OpcionProducto::EXTRA => $datos['extras'] ?? null,
+            OpcionProducto::QUITABLE => $datos['quitables'] ?? null,
+        ];
+
+        foreach ($listas as $tipo => $opciones) {
+            if ($opciones === null) {
+                continue;
+            }
+
+            $producto->opciones()->where('tipo', $tipo)->delete();
+
+            foreach ($opciones as $opcion) {
+                $producto->opciones()->create([
+                    'tipo' => $tipo,
+                    'nombre' => $opcion['nombre'],
+                    // Un quitable nunca cuesta, aunque el cliente mande precio.
+                    'precio' => $tipo === OpcionProducto::EXTRA ? $opcion['precio'] : 0,
+                ]);
+            }
+        }
     }
 
     // Busca un producto solo dentro de la tienda del encargado.
