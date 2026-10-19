@@ -16,6 +16,7 @@ use Database\Seeders\TiendaSeeder;
 use Database\Seeders\UsuarioSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 // Extras y quitables propios de cada producto (HU-04).
@@ -28,6 +29,9 @@ class OpcionesProductoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // La copia a Mongo (#165) va en cola; aquí no hay Mongo, así que no se ejecuta.
+        Queue::fake();
 
         $this->seed(JerarquiaInstitucionalSeeder::class);
         Categorias::create(['nombre' => 'Bebidas']);
