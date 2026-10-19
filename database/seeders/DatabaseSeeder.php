@@ -4,13 +4,13 @@ namespace Database\Seeders;
 
 use App\Models\DominiosInstitucional;
 use App\Models\Usuario;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
+// Sin WithoutModelEvents: los seeders deben crear los datos igual que la app.
+// Usuario le pone el rol "usuario" en su evento creating; con los eventos apagados
+// el usuario se insertaba sin id_rol y Postgres lo rechazaba.
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
      */
