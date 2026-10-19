@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -32,8 +33,10 @@ class Usuario extends Authenticatable
         'hash_password',
         'telefono',
         'terminos_aceptados_en',
-        'rol',
     ];
+
+    // El rol casi siempre se consulta (middleware rol, tenant, UsuarioResource): se trae junto con el usuario.
+    protected $with = ['rol'];
 
     protected $hidden = [ //aqui le decimos a Eloquent que el campo hash_password no se va a mostrar en la respuesta de la API es la contra parte de la propiedad $fillable, que es para decirle a Eloquent que campos se pueden llenar y cuales no, en este caso le decimos que el campo hash_password no se puede llenar desde la API
         'hash_password',
@@ -43,6 +46,37 @@ class Usuario extends Authenticatable
         'terminos_aceptados_en' => 'datetime',
         'activo' => 'boolean',
         'saldo_cache' => 'decimal:2',
-        'rol' => \App\Enums\RolUsuario::class,
     ];
+
+    // Todo usuario nace con el rol "usuario". El rol nunca viene del cliente (id_rol no está en $fillable):
+    // solo lo cambia el servidor, por ejemplo al asignar un encargado.
+    protected static function booted(): void
+    {
+        static::creating(function (Usuario $usuario) {
+            $usuario->id_rol ??= Rol::idDe(Rol::USUARIO);
+        });
+    }
+
+    public function rol(): BelongsTo
+    {
+        return $this->belongsTo(Rol::class, 'id_rol');
+    }
+
+    // Clave del rol: 'usuario', 'encargado_tienda' o 'administrador'.
+    public function claveRol(): string
+    {
+        return $this->rol->clave;
+    }
+
+    public function tieneRol(string $clave): bool
+    {
+        return $this->claveRol() === $clave;
+    }
+
+    // Cambia el rol en memoria; quien lo llama decide cuándo hacer save().
+    public function asignarRol(string $clave): void
+    {
+        $this->id_rol = Rol::idDe($clave);
+        $this->unsetRelation('rol');
+    }
 }

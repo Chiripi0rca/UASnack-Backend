@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Enums\RolUsuario;
 use App\Exceptions\ErrorNegocio;
+use App\Models\Rol;
 use App\Models\Tienda;
 use App\Models\Usuario;
 use Illuminate\Support\Facades\DB;
@@ -50,7 +50,7 @@ class AsignarEncargadoService
             }
 
             // 4. Un administrador no puede ser encargado.
-            if ($nuevoEncargado->rol === RolUsuario::Admin) {
+            if ($nuevoEncargado->tieneRol(Rol::ADMINISTRADOR)) {
                 throw new ErrorNegocio(
                     'ADMIN_NO_PUEDE_SER_ENCARGADO',
                     'No se puede asignar un administrador como encargado.',
@@ -80,13 +80,13 @@ class AsignarEncargadoService
                     ->find($tienda->id_dueno);
 
                 if ($encargadoAnterior) {
-                    $encargadoAnterior->rol = RolUsuario::Usuario;
+                    $encargadoAnterior->asignarRol(Rol::USUARIO);
                     $encargadoAnterior->save();
                 }
             }
 
             // Asignar el rol al nuevo encargado.
-            $nuevoEncargado->rol = RolUsuario::Encargado_Tienda;
+            $nuevoEncargado->asignarRol(Rol::ENCARGADO_TIENDA);
             $nuevoEncargado->save();
 
             // Actualizar el propietario de la tienda.

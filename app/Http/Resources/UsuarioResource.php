@@ -17,7 +17,8 @@ class UsuarioResource extends JsonResource
             'apellido' => $this->apellido,
             'correo_institucional' => $this->correo_institucional,
             'id_facultad' => $this->id_facultad,
-            'rol' => $this->rol,
+            // Se sigue mandando la clave como texto: los clientes no cambian.
+            'rol' => $this->claveRol(),
             'reputacion' => $this->reputacion,
             'correo_verificado_en' => $this->correo_verificado_en,
         ];

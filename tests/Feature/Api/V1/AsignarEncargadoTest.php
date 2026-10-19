@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
-use App\Enums\RolUsuario;
+use App\Models\Rol;
 use App\Models\Facultades;
 use App\Models\Tienda;
 use App\Models\Usuario;
@@ -25,17 +25,17 @@ class AsignarEncargadoTest extends TestCase
     public function test_asigna_usuario_verificado_y_libera_al_anterior(): void
     {
         $admin = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'admin@info.uas.edu.mx'
         );
 
         $anterior = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'anterior@info.uas.edu.mx'
         );
 
         $nuevo = $this->crearUsuario(
-            RolUsuario::Usuario,
+            Rol::USUARIO,
             'nuevo@info.uas.edu.mx'
         );
 
@@ -57,30 +57,30 @@ class AsignarEncargadoTest extends TestCase
         ]);
 
         $this->assertSame(
-            RolUsuario::Encargado_Tienda,
-            $nuevo->fresh()->rol
+            Rol::ENCARGADO_TIENDA,
+            $nuevo->fresh()->claveRol()
         );
 
         $this->assertSame(
-            RolUsuario::Usuario,
-            $anterior->fresh()->rol
+            Rol::USUARIO,
+            $anterior->fresh()->claveRol()
         );
     }
 
     public function test_rechaza_usuario_no_verificado(): void
     {
         $admin = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'admin@info.uas.edu.mx'
         );
 
         $anterior = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'anterior@info.uas.edu.mx'
         );
 
         $nuevo = $this->crearUsuario(
-            RolUsuario::Usuario,
+            Rol::USUARIO,
             'pendiente@info.uas.edu.mx',
             false
         );
@@ -105,17 +105,17 @@ class AsignarEncargadoTest extends TestCase
     public function test_rechaza_administrador_como_encargado(): void
     {
         $admin = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'admin@info.uas.edu.mx'
         );
 
         $candidato = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'otroadmin@info.uas.edu.mx'
         );
 
         $anterior = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'anterior@info.uas.edu.mx'
         );
 
@@ -137,17 +137,17 @@ class AsignarEncargadoTest extends TestCase
     public function test_rechaza_usuario_que_ya_tiene_otra_tienda(): void
     {
         $admin = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'admin@info.uas.edu.mx'
         );
 
         $anterior = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'anterior@info.uas.edu.mx'
         );
 
         $candidato = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'ocupado@info.uas.edu.mx'
         );
 
@@ -187,12 +187,12 @@ class AsignarEncargadoTest extends TestCase
     public function test_rechaza_correo_inexistente(): void
     {
         $admin = $this->crearUsuario(
-            RolUsuario::Admin,
+            Rol::ADMINISTRADOR,
             'admin@info.uas.edu.mx'
         );
 
         $anterior = $this->crearUsuario(
-            RolUsuario::Encargado_Tienda,
+            Rol::ENCARGADO_TIENDA,
             'anterior@info.uas.edu.mx'
         );
 
@@ -212,7 +212,7 @@ class AsignarEncargadoTest extends TestCase
     }
 
     private function crearUsuario(
-        RolUsuario $rol,
+        string $rol,
         string $correo,
         bool $verificado = true
     ): Usuario {
@@ -226,7 +226,7 @@ class AsignarEncargadoTest extends TestCase
         ]);
 
         // Estos campos se asignan explícitamente porque no son fillable.
-        $usuario->rol = $rol;
+        $usuario->asignarRol($rol);
 
         if ($verificado) {
             $usuario->correo_verificado_en = now();

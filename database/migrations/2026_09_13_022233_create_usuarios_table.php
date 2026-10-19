@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules\Unique;
-use App\Enums\RolUsuario;
 
 return new class extends Migration
 {
@@ -23,7 +22,7 @@ return new class extends Migration
             $table->string('telefono');
             $table->integer('reputacion')->default(100);
             $table->decimal('saldo_cache', 10, 2)->default(0.00);
-            $table->string('rol')->default(RolUsuario::Usuario);
+            $table->string('rol')->default('usuario'); // la reemplaza id_rol (migración de roles)
             $table->timestamp('correo_verificado_en')->nullable();
             $table->timestamp('terminos_aceptados_en')->nullable();
             $table->boolean('activo')->default(true);

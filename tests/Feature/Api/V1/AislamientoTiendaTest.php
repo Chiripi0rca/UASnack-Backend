@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
-use App\Enums\RolUsuario;
+use App\Models\Rol;
 use App\Models\Categorias;
 use App\Models\Facultades;
 use App\Models\Producto;
@@ -48,8 +48,8 @@ class AislamientoTiendaTest extends TestCase
 
         $categoria = Categorias::create(['nombre' => 'Bebidas']);
 
-        $this->encargadoA = $this->usuario(RolUsuario::Encargado_Tienda, 'encargado.a@uas.edu.mx');
-        $encargadoB = $this->usuario(RolUsuario::Encargado_Tienda, 'encargado.b@uas.edu.mx');
+        $this->encargadoA = $this->usuario(Rol::ENCARGADO_TIENDA, 'encargado.a@uas.edu.mx');
+        $encargadoB = $this->usuario(Rol::ENCARGADO_TIENDA, 'encargado.b@uas.edu.mx');
 
         $this->productoA = $this->producto($this->tiendaDe($this->encargadoA), $categoria);
         $this->productoB = $this->producto($this->tiendaDe($encargadoB), $categoria);
@@ -81,7 +81,7 @@ class AislamientoTiendaTest extends TestCase
 
     public function test_el_alumno_ve_los_productos_de_todas_las_tiendas(): void
     {
-        $alumno = $this->usuario(RolUsuario::Usuario, 'alumno@info.uas.edu.mx');
+        $alumno = $this->usuario(Rol::USUARIO, 'alumno@info.uas.edu.mx');
 
         $this->withToken($this->tokenDe($alumno))
             ->getJson('/api/v1/prueba-catalogo')
@@ -99,7 +99,7 @@ class AislamientoTiendaTest extends TestCase
         $this->assertTrue($respuestaPropio->allowed());
     }
 
-    private function usuario(RolUsuario $rol, string $correo): Usuario
+    private function usuario(string $rol, string $correo): Usuario
     {
         $usuario = Usuario::create([
             'nombre' => 'Prueba',
@@ -111,7 +111,7 @@ class AislamientoTiendaTest extends TestCase
         ]);
 
         // rol y correo_verificado_en no están en $fillable (nunca vienen del cliente)
-        $usuario->rol = $rol;
+        $usuario->asignarRol($rol);
         $usuario->correo_verificado_en = now();
         $usuario->save();
 

@@ -2,8 +2,8 @@
 
 namespace App\Http\Middleware;
 
-use App\Enums\RolUsuario;
 use App\Exceptions\ErrorNegocio;
+use App\Models\Rol;
 use App\Models\Tienda;
 use App\Support\Tenant;
 use Closure;
@@ -27,12 +27,12 @@ class ResolverTenant
     {
         $usuario = $request->user();
 
-        $this->tenant->rol = $usuario->rol;
+        $this->tenant->rol = $usuario->claveRol();
 
         // Para el alumno es solo la preferencia de orden (sus tiendas primero), nunca un filtro.
         $this->tenant->idFacultad = $usuario->id_facultad;
 
-        if ($usuario->rol === RolUsuario::Encargado_Tienda) {
+        if ($usuario->tieneRol(Rol::ENCARGADO_TIENDA)) {
             $idTienda = Tienda::where('id_dueno', $usuario->id)->value('id');
 
             // Un encargado sin tienda no tiene nada que operar: se corta aquí

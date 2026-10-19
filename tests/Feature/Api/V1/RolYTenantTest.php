@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
-use App\Enums\RolUsuario;
+use App\Models\Rol;
 use App\Models\Facultades;
 use App\Models\Tienda;
 use App\Models\Usuario;
@@ -43,7 +43,7 @@ class RolYTenantTest extends TestCase
 
     public function test_un_alumno_no_entra_al_panel_de_administracion(): void
     {
-        $this->withToken($this->tokenDe($this->usuario(RolUsuario::Usuario)))
+        $this->withToken($this->tokenDe($this->usuario(Rol::USUARIO)))
             ->getJson('/api/v1/prueba-admin')
             ->assertForbidden()
             ->assertJsonPath('error.codigo', 'SIN_PERMISO');
@@ -51,7 +51,7 @@ class RolYTenantTest extends TestCase
 
     public function test_un_encargado_no_entra_al_panel_de_administracion(): void
     {
-        $encargado = $this->usuario(RolUsuario::Encargado_Tienda, 'encargado@uas.edu.mx');
+        $encargado = $this->usuario(Rol::ENCARGADO_TIENDA, 'encargado@uas.edu.mx');
         $this->tiendaDe($encargado);
 
         $this->withToken($this->tokenDe($encargado))
@@ -62,7 +62,7 @@ class RolYTenantTest extends TestCase
 
     public function test_el_administrador_entra_y_queda_resuelta_su_facultad(): void
     {
-        $admin = $this->usuario(RolUsuario::Admin, 'admin@uas.edu.mx');
+        $admin = $this->usuario(Rol::ADMINISTRADOR, 'admin@uas.edu.mx');
 
         $this->withToken($this->tokenDe($admin))
             ->getJson('/api/v1/prueba-admin')
@@ -73,7 +73,7 @@ class RolYTenantTest extends TestCase
 
     public function test_el_encargado_entra_y_queda_resuelta_su_tienda(): void
     {
-        $encargado = $this->usuario(RolUsuario::Encargado_Tienda, 'encargado@uas.edu.mx');
+        $encargado = $this->usuario(Rol::ENCARGADO_TIENDA, 'encargado@uas.edu.mx');
         $tienda = $this->tiendaDe($encargado);
 
         $this->withToken($this->tokenDe($encargado))
@@ -84,7 +84,7 @@ class RolYTenantTest extends TestCase
 
     public function test_un_encargado_sin_tienda_asignada_no_entra_al_panel(): void
     {
-        $encargado = $this->usuario(RolUsuario::Encargado_Tienda, 'encargado@uas.edu.mx');
+        $encargado = $this->usuario(Rol::ENCARGADO_TIENDA, 'encargado@uas.edu.mx');
 
         $this->withToken($this->tokenDe($encargado))
             ->getJson('/api/v1/prueba-tienda')
@@ -94,8 +94,8 @@ class RolYTenantTest extends TestCase
 
     public function test_una_ruta_puede_aceptar_varios_roles(): void
     {
-        $admin = $this->usuario(RolUsuario::Admin, 'admin@uas.edu.mx');
-        $alumno = $this->usuario(RolUsuario::Usuario);
+        $admin = $this->usuario(Rol::ADMINISTRADOR, 'admin@uas.edu.mx');
+        $alumno = $this->usuario(Rol::USUARIO);
 
         $this->withToken($this->tokenDe($admin))->getJson('/api/v1/prueba-dos-roles')->assertNoContent();
 
@@ -112,7 +112,7 @@ class RolYTenantTest extends TestCase
             ->assertJsonPath('error.codigo', 'NO_AUTENTICADO');
     }
 
-    private function usuario(RolUsuario $rol, string $correo = 'ana@info.uas.edu.mx'): Usuario
+    private function usuario(string $rol, string $correo = 'ana@info.uas.edu.mx'): Usuario
     {
         $usuario = Usuario::create([
             'nombre' => 'Prueba',
@@ -124,7 +124,7 @@ class RolYTenantTest extends TestCase
         ]);
 
         // rol y correo_verificado_en no están en $fillable (nunca vienen del cliente)
-        $usuario->rol = $rol;
+        $usuario->asignarRol($rol);
         $usuario->correo_verificado_en = now();
         $usuario->save();
 
