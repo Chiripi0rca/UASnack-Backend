@@ -16,8 +16,8 @@ class EsRol
 {
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        // rol es un enum (RolUsuario): se compara su valor de texto, el mismo que va en la ruta.
-        if (! in_array($request->user()->rol->value, $roles, true)) {
+        // Se compara la clave del rol (tabla roles), la misma que va en la ruta.
+        if (! in_array($request->user()->claveRol(), $roles, true)) {
             throw new ErrorNegocio(
                 'SIN_PERMISO',
                 'No tienes permiso para entrar a esta sección.',

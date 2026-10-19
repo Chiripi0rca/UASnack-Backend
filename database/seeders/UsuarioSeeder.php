@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Enums\RolUsuario;
+use App\Models\Rol;
 use App\Models\Usuario;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -21,7 +21,7 @@ class UsuarioSeeder extends Seeder
             'telefono' => '6671000001',
         ]);
 
-        $admin->rol = RolUsuario::Admin;
+        $admin->asignarRol(Rol::ADMINISTRADOR);
         $admin->correo_verificado_en = now();
         $admin->save();
 
@@ -35,7 +35,7 @@ class UsuarioSeeder extends Seeder
             'telefono' => '6671000002',
         ]);
 
-        $encargado->rol = RolUsuario::Encargado_Tienda;
+        $encargado->asignarRol(Rol::ENCARGADO_TIENDA);
         $encargado->correo_verificado_en = now();
         $encargado->save();
         
@@ -49,7 +49,7 @@ class UsuarioSeeder extends Seeder
         'telefono' => '6671000003',
     ]);
 
-       $encargado2->rol = RolUsuario::Encargado_Tienda;
+       $encargado2->asignarRol(Rol::ENCARGADO_TIENDA);
        $encargado2->correo_verificado_en = now();
        $encargado2->save();
 

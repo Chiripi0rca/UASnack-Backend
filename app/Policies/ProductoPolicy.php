@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
-use App\Enums\RolUsuario;
 use App\Models\Producto;
+use App\Models\Rol;
 use App\Models\Tienda;
 use App\Models\Usuario;
 use Illuminate\Auth\Access\Response;
@@ -34,7 +34,7 @@ class ProductoPolicy
 
     private function esDeSuTienda(Usuario $usuario, Producto $producto): Response
     {
-        $esSuyo = $usuario->rol === RolUsuario::Encargado_Tienda
+        $esSuyo = $usuario->tieneRol(Rol::ENCARGADO_TIENDA)
             && Tienda::where('id', $producto->id_tienda)->where('id_dueno', $usuario->id)->exists();
 
         return $esSuyo ? Response::allow() : Response::denyAsNotFound();

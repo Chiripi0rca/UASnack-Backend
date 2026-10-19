@@ -2,7 +2,7 @@
 
 namespace App\Support;
 
-use App\Enums\RolUsuario;
+use App\Models\Rol;
 
 // Quién hace la petición actual, ya resuelto por el middleware ResolverTenant (#162).
 // Vive una sola petición: AppServiceProvider lo registra con scoped(), así que cada petición empieza vacía.
@@ -15,7 +15,8 @@ use App\Enums\RolUsuario;
 // nunca se usa para ocultarle tiendas de otras facultades.
 class Tenant
 {
-    public ?RolUsuario $rol = null;
+    // Clave del rol (tabla roles): usuario, encargado_tienda o administrador
+    public ?string $rol = null;
 
     public ?int $idFacultad = null;
 
@@ -24,6 +25,6 @@ class Tenant
 
     public function esEncargado(): bool
     {
-        return $this->rol === RolUsuario::Encargado_Tienda;
+        return $this->rol === Rol::ENCARGADO_TIENDA;
     }
 }
