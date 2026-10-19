@@ -15,6 +15,10 @@ use Illuminate\Validation\ValidationException;
 // Lógica del catálogo que administra el encargado desde su panel.
 class ProductoPanelService
 {
+    public function __construct(private CatalogoService $catalogo)
+    {
+    }
+
     // Lista todos los productos de la tienda del encargado, agotados incluidos:
     // el encargado necesita verlos para reponer stock.
     public function productosDe(Usuario $encargado): Collection
@@ -45,6 +49,9 @@ class ProductoPanelService
             $this->guardarOpciones($producto, $datos);
         });
 
+        // El alumno ve el cambio en su catálogo (#165).
+        $this->catalogo->sincronizarMongo($producto);
+
         return $producto->fresh('opciones');
     }
 
@@ -68,6 +75,9 @@ class ProductoPanelService
             $this->guardarOpciones($producto, $datos);
         });
 
+        // El alumno ve el cambio en su catálogo (#165).
+        $this->catalogo->sincronizarMongo($producto);
+
         return $producto->fresh('opciones');
     }
 
@@ -80,6 +90,8 @@ class ProductoPanelService
         $producto->stock_hoy = $stock;
         $producto->estado_producto = $this->estadoSegunStock($stock);
         $producto->save();
+
+        $this->catalogo->sincronizarMongo($producto);
 
         return $producto->fresh('opciones');
     }

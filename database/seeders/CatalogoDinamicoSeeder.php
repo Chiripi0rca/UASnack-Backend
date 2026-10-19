@@ -2,24 +2,18 @@
 
 namespace Database\Seeders;
 
-use App\Documents\CatalogoDinamico;
+use App\Jobs\EspejarProductoEnMongo;
 use App\Models\Producto;
 use Illuminate\Database\Seeder;
 
-// Copia a Mongo (catalogo_dinamico) los extras y quitables que cada producto tiene en PostgreSQL.
-// Antes inventaba aquí los mismos cuatro para todos; ahora solo copia lo que ya existe en SQL.
+// Copia a Mongo (catalogo_dinamico) cada producto de PostgreSQL, con sus extras y quitables.
+// Usa el mismo job que el panel (#165), pero sin cola: al terminar el seed, Mongo ya está listo.
 class CatalogoDinamicoSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (Producto::withoutGlobalScopes()->with('opciones')->get() as $producto) {
-            CatalogoDinamico::updateOrCreate(
-                ['id_producto' => $producto->id],
-                [
-                    'id_tienda' => $producto->id_tienda,
-                    'personalizaciones' => $producto->personalizaciones(),
-                ]
-            );
+        foreach (Producto::withoutGlobalScopes()->pluck('id') as $idProducto) {
+            EspejarProductoEnMongo::dispatchSync($idProducto);
         }
     }
 }

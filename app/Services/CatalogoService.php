@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Documents\CatalogoDinamico;
 use App\Exceptions\ErrorNegocio;
+use App\Jobs\EspejarProductoEnMongo;
 use App\Models\Producto;
 use App\Models\Tienda;
 use App\Models\Usuario;
@@ -15,7 +16,7 @@ use LogicException;
 // ESQUELETO (Sprint 02). Cada método lo completa su tarea:
 //   productosDe      → #45
 //   calcularTotal    → #49
-//   sincronizarMongo → #165
+//   sincronizarMongo → #165 (hecho)
 // Si una firma no te sirve, acuérdalo con los demás antes de cambiarla.
 class CatalogoService
 {
@@ -165,9 +166,15 @@ class CatalogoService
     }
 
     // la tarea 165: copia el producto a catalogo_dinamico (Mongo) y borra la caché de su tienda.
+    // Se llama después de crear o editar un producto, o de cambiarle el stock.
     public function sincronizarMongo(Producto $producto): void
     {
-        throw new LogicException('Pendiente: #165');
+        // La caché se borra ya: el stock y el precio salen de SQL y deben verse al momento.
+        Cache::forget(self::claveCache($producto->id_tienda));
+
+        // La copia a Mongo va en cola y solo después del commit: si la transacción del
+        // producto se revierte, no queda en Mongo algo que no existe en SQL.
+        EspejarProductoEnMongo::dispatch($producto->id)->afterCommit();
     }
 
     // Un solo lugar para el 404. "never" avisa a PHP que siempre lanza excepción.
