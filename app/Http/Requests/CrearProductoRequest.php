@@ -27,6 +27,12 @@ class CrearProductoRequest extends FormRequest
             // gte = mayor o igual que el otro campo del mismo request
             'tiempo_prep_max' => ['required', 'integer', 'gte:tiempo_prep_min'],
             'foto_url'        => ['nullable', 'url', 'max:255'],
+            // Opciones propias del producto (HU-04). Las dos listas son opcionales.
+            'extras'             => ['sometimes', 'array', 'max:20'],
+            'extras.*.nombre'    => ['required', 'string', 'max:100'],
+            'extras.*.precio'    => ['required', 'numeric', 'min:0', 'max:9999.99'],
+            'quitables'          => ['sometimes', 'array', 'max:20'],
+            'quitables.*.nombre' => ['required', 'string', 'max:100'],
         ];
     }
 
@@ -49,6 +55,12 @@ class CrearProductoRequest extends FormRequest
             'tiempo_prep_max.required' => 'El tiempo máximo de preparación es obligatorio.',
             'tiempo_prep_max.gte'      => 'El tiempo máximo no puede ser menor que el mínimo.',
             'foto_url.url'             => 'La foto debe ser una URL válida.',
+            'extras.max'               => 'Un producto puede tener máximo 20 extras.',
+            'extras.*.nombre.required' => 'Cada extra necesita un nombre.',
+            'extras.*.precio.required' => 'Cada extra necesita un precio.',
+            'extras.*.precio.min'      => 'El precio de un extra no puede ser negativo.',
+            'quitables.max'            => 'Un producto puede tener máximo 20 quitables.',
+            'quitables.*.nombre.required' => 'Cada quitable necesita un nombre.',
         ];
     }
 }

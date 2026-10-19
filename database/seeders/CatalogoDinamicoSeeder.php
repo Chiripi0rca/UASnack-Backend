@@ -6,31 +6,18 @@ use App\Documents\CatalogoDinamico;
 use App\Models\Producto;
 use Illuminate\Database\Seeder;
 
+// Copia a Mongo (catalogo_dinamico) los extras y quitables que cada producto tiene en PostgreSQL.
+// Antes inventaba aquí los mismos cuatro para todos; ahora solo copia lo que ya existe en SQL.
 class CatalogoDinamicoSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (Producto::withoutGlobalScopes()->get() as $producto) {
+        foreach (Producto::withoutGlobalScopes()->with('opciones')->get() as $producto) {
             CatalogoDinamico::updateOrCreate(
                 ['id_producto' => $producto->id],
                 [
                     'id_tienda' => $producto->id_tienda,
-                    'personalizaciones' => [
-                        [
-                            'tipo' => 'extras',
-                            'opciones' => [
-                                ['id' => 'queso', 'nombre' => 'Queso extra', 'precio' => 5.00],
-                                ['id' => 'aguacate', 'nombre' => 'Aguacate', 'precio' => 8.00],
-                            ],
-                        ],
-                        [
-                            'tipo' => 'quitables',
-                            'opciones' => [
-                                ['id' => 'cebolla', 'nombre' => 'Cebolla'],
-                                ['id' => 'chile', 'nombre' => 'Chile'],
-                            ],
-                        ],
-                    ],
+                    'personalizaciones' => $producto->personalizaciones(),
                 ]
             );
         }
