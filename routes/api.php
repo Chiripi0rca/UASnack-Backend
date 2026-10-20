@@ -89,7 +89,7 @@ Route::prefix('admin')
         // HU-31: Asignar o cambiar el encargado de una tienda.
         Route::patch(
             '/tiendas/{id}/encargado',
-            [TiendaController::class, 'asignarEncargado']
+            [TiendaAdminController::class, 'asignarEncargado']
         )->whereNumber('id');
 
         // #102: GET/POST/PATCH /admin/tiendas
@@ -108,7 +108,16 @@ Route::prefix('admin')
             [TiendaAdminController::class, 'actualizarTienda']
         )->whereNumber('id');
 
-        // #104: GET /admin/encargados
+        // #104: encargados de la facultad, y búsqueda por correo antes de asignar
+        Route::get(
+            '/encargados',
+            [TiendaAdminController::class, 'obtenerEncargados']
+        );
+
+        Route::get(
+            '/usuarios/buscar',
+            [TiendaAdminController::class, 'buscarUsuario']
+        );
     });
 
 // Consulta la sesión actual.

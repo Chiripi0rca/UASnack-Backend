@@ -49,7 +49,7 @@ class AsignarEncargadoTest extends TestCase
         )
             ->assertOk()
             ->assertJsonPath('datos.encargado.id', $nuevo->id)
-            ->assertJsonPath('datos.encargado.rol', 'encargado_tienda');
+            ->assertJsonPath('datos.encargado.correo', $nuevo->correo_institucional);
 
         $this->assertDatabaseHas('tiendas', [
             'id' => $tienda->id,
