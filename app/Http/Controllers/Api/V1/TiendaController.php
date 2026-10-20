@@ -3,11 +3,8 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\AsignarEncargadoRequest;
 use App\Http\Resources\TiendaResource;
-use App\Http\Resources\UsuarioResource;
 use App\Models\Tienda;
-use App\Services\AsignarEncargadoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -37,34 +34,6 @@ class TiendaController extends Controller
         ]);
     }
 
-    /**
-     * PATCH /api/v1/admin/tiendas/{id}/encargado
-     *
-     * Asigna o cambia el encargado de una tienda.
-     * La autorización se controla mediante los middlewares
-     * registrados en routes/api.php.
-     */
-    public function asignarEncargado(
-        AsignarEncargadoRequest $request,
-        int $id,
-        AsignarEncargadoService $servicio
-    ): JsonResponse {
-        $datos = $request->validated();
-
-        $tienda = $servicio->asignar(
-            $id,
-            $datos['correo_institucional']
-        );
-
-        return response()->json([
-            'mensaje' => 'Encargado asignado correctamente.',
-            'datos' => [
-                'id_tienda' => $tienda->id,
-                'nombre_tienda' => $tienda->nombre,
-                'encargado' => (new UsuarioResource(
-                    $tienda->dueno
-                ))->resolve($request),
-            ],
-        ], 200);
-    }
+    // PATCH /admin/tiendas/{id}/encargado se movió a TiendaAdminController (#104),
+    // con el resto de los endpoints del administrador.
 }
