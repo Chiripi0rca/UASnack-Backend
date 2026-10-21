@@ -31,7 +31,7 @@ class TiendaSeeder extends Seeder
                 'id_dueno' => $encargado->id,
                 'ubicacion' => 'Esta al lado del estacionamineto del modulo A',
                 'horario_apertura' => '07:00',
-                'horario_cierre' => '19:00',
+                'horario_cierre' => '23:00',
                 'duracion_franja_min' => 10,
                 'cupo_bajo_demanda' => 3,
                 'umbral_espera_min' => 15,
