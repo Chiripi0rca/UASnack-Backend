@@ -14,7 +14,7 @@ RUN apk add --no-cache \
     unzip \
     $PHPIZE_DEPS
 
-RUN docker-php-ext-install pdo pdo_pgsql pgsql zip intl mbstring bcmath
+RUN docker-php-ext-install pdo pdo_pgsql pgsql zip intl mbstring bcmath pcntl
 
 RUN pecl install mongodb redis \
     && docker-php-ext-enable mongodb redis
