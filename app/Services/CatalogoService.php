@@ -103,10 +103,7 @@ class CatalogoService
     private function personalizacionesDe(Tienda $tienda): Collection
     {
         try {
-            //una sola consulta para toda la tienda
-            return CatalogoDinamico::where('id_tienda', $tienda->id)
-                ->get()
-                ->keyBy('id_producto'); //permite buscar por id_producto
+            return $this->documentosDeMongo($tienda);
         } catch (\Throwable $e) {
               // Deja el error real en storage/logs/laravel.log para investigarlo
             report($e);
@@ -118,7 +115,17 @@ class CatalogoService
                 503
             );
         }
-    
+
+    }
+
+    // La consulta a Mongo, sola. Es protected para que las pruebas la simulen (#230):
+    // la suite corre sin Mongo, y así se prueba también el 503 cuando Mongo no responde.
+    protected function documentosDeMongo(Tienda $tienda): Collection
+    {
+        //una sola consulta para toda la tienda
+        return CatalogoDinamico::where('id_tienda', $tienda->id)
+            ->get()
+            ->keyBy('id_producto'); //permite buscar por id_producto
     }
 
     public function producto(int $id): array
