@@ -52,4 +52,17 @@ class RegistroTest extends TestCase
             ->assertJsonPath('error.campos.nombre.0', 'Este campo es obligatorio.')
             ->assertJsonPath('error.campos.telefono.0', 'El teléfono debe tener 10 dígitos.');
     }
+
+    public function test_el_sexto_registro_en_un_minuto_responde_429(): void
+    {
+        // Datos inválidos a propósito: el límite cuenta toda petición, no solo las exitosas.
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/v1/auth/registro', [])->assertStatus(422);
+        }
+
+        $this->postJson('/api/v1/auth/registro', [])
+            ->assertStatus(429)
+            ->assertJsonPath('error.codigo', 'DEMASIADOS_INTENTOS')
+            ->assertHeader('Retry-After');
+    }
 }

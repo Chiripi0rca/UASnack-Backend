@@ -16,7 +16,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/facultades', [FacultadController::class, 'obtenerFacultades']);
 
-Route::post('/auth/registro', [AuthController::class, 'registro']);
+// Registro: máximo 5 peticiones por minuto (#232). Cada registro manda un correo,
+// así que sin límite cualquiera podría usarlo para llenar buzones o el SMTP.
+Route::post('/auth/registro', [AuthController::class, 'registro'])
+    ->middleware('throttle:5,1');
 
 // Login: máximo 5 peticiones por minuto.
 Route::post('/auth/login', [AuthController::class, 'login'])
