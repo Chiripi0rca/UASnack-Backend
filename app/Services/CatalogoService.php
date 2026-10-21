@@ -5,18 +5,18 @@ namespace App\Services;
 use App\Documents\CatalogoDinamico;
 use App\Exceptions\ErrorNegocio;
 use App\Jobs\EspejarProductoEnMongo;
+use App\Models\OpcionProducto;
 use App\Models\Producto;
 use App\Models\Tienda;
 use App\Models\Usuario;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
-use LogicException;
-
-// ESQUELETO (Sprint 02). Cada método lo completa su tarea:
+// Sprint 02. Cada método lo completó su tarea:
 //   productosDe      → #45
 //   calcularTotal    → #49
-//   sincronizarMongo → #165 (hecho)
+//   sincronizarMongo → #165
 // Si una firma no te sirve, acuérdalo con los demás antes de cambiarla.
 class CatalogoService
 {
@@ -158,11 +158,108 @@ class CatalogoService
 
 
     // la tarea 49: total calculado en el servidor: (precio + extras) × cantidad. Nunca usa precios del cliente.
-    // $lineas: [['id_producto' => 1, 'cantidad' => 2, 'extras' => [...]], ...]
-    // El descuento por franja llega en la HU-20 (la tarea  262): déjale un punto marcado para aplicarlo.
-    public function calcularTotal(array $lineas): float
+    // $lineas: [['id_producto' => 1, 'cantidad' => 2, 'extras' => ['3', '4'], 'quitables' => ['7']], ...]
+    //   extras y quitables son los id de opciones_producto (los mismos que llegan en personalizaciones).
+    //   Cualquier precio o total que mande el cliente se ignora.
+    //
+    // Devuelve el total y el desglose por línea, que PedidoService guarda tal cual en detalle_pedido:
+    //   ['total' => 90.0, 'lineas' => [['id_producto', 'id_tienda', 'nombre', 'cantidad', 'extras',
+    //     'quitables', 'precio_unitario', 'descuento_aplicado', 'subtotal'], ...]]
+    //
+    // Los precios salen de PostgreSQL (productos y opciones_producto), nunca de Mongo ni de la caché:
+    // es dinero. Se suma en centavos (enteros) para que 0.1 + 0.2 no dé 0.30000000000000004.
+    public function calcularTotal(array $lineas, ?Carbon $franja = null): array
     {
-        throw new LogicException('Pendiente: #49');
+        if ($lineas === []) {
+            throw new ErrorNegocio('CARRITO_VACIO', 'Agrega al menos un producto.', 422);
+        }
+
+        $productos = Producto::withoutGlobalScopes()
+            ->with('opciones')
+            ->whereIn('id', array_map(fn (array $l) => (int) ($l['id_producto'] ?? 0), $lineas))
+            ->get()
+            ->keyBy('id');
+
+        $idTienda = null;
+        $totalCentavos = 0;
+        $desglose = [];
+
+        foreach ($lineas as $linea) {
+            $producto = $productos->get((int) ($linea['id_producto'] ?? 0));
+
+            if (! $producto) {
+                $this->noEncontrado();
+            }
+
+            // Un pedido es de una sola tienda: el cobro va a la cuenta de esa tienda.
+            $idTienda ??= $producto->id_tienda;
+            if ($producto->id_tienda !== $idTienda) {
+                throw new ErrorNegocio('VARIAS_TIENDAS', 'Un pedido solo puede tener productos de una tienda.', 422);
+            }
+
+            $cantidad = (int) ($linea['cantidad'] ?? 0);
+            if ($cantidad < 1) {
+                throw new ErrorNegocio('CANTIDAD_INVALIDA', 'La cantidad debe ser de al menos 1.', 422);
+            }
+
+            $extras = $this->opcionesElegidas($producto, $linea['extras'] ?? [], OpcionProducto::EXTRA);
+            $quitables = $this->opcionesElegidas($producto, $linea['quitables'] ?? [], OpcionProducto::QUITABLE);
+
+            $unitarioCentavos = $this->aCentavos($producto->precio)
+                + $extras->sum(fn (OpcionProducto $o) => $this->aCentavos($o->precio));
+
+            // HU-20 (#262): aquí se aplica el descuento vigente de $franja para este producto
+            // o su categoría. Mientras no exista, el descuento es 0.
+            $descuentoCentavos = 0;
+
+            $subtotalCentavos = $unitarioCentavos * $cantidad - $descuentoCentavos;
+            $totalCentavos += $subtotalCentavos;
+
+            $desglose[] = [
+                'id_producto' => $producto->id,
+                'id_tienda' => $producto->id_tienda,
+                'nombre' => $producto->nombre,
+                'cantidad' => $cantidad,
+                'extras' => $extras->map(fn (OpcionProducto $o) => [
+                    'id' => (string) $o->id, 'nombre' => $o->nombre, 'precio' => (float) $o->precio,
+                ])->values()->all(),
+                'quitables' => $quitables->map(fn (OpcionProducto $o) => [
+                    'id' => (string) $o->id, 'nombre' => $o->nombre,
+                ])->values()->all(),
+                'precio_unitario' => $unitarioCentavos / 100,
+                'descuento_aplicado' => $descuentoCentavos / 100,
+                'subtotal' => $subtotalCentavos / 100,
+            ];
+        }
+
+        return ['total' => $totalCentavos / 100, 'lineas' => $desglose];
+    }
+
+    // Las opciones de ese tipo que eligió el cliente, buscadas entre las del propio producto.
+    // Un id que no es de este producto (o es de otro tipo) se rechaza: así no se cuela
+    // un extra de otro producto ni se cobra un quitable como extra.
+    private function opcionesElegidas(Producto $producto, array $ids, string $tipo): Collection
+    {
+        $ids = array_values(array_unique(array_map('strval', $ids)));
+
+        $elegidas = $producto->opciones
+            ->where('tipo', $tipo)
+            ->filter(fn (OpcionProducto $o) => in_array((string) $o->id, $ids, true));
+
+        if ($elegidas->count() !== count($ids)) {
+            throw new ErrorNegocio(
+                'OPCION_INVALIDA',
+                "Una de las opciones elegidas ya no está disponible para {$producto->nombre}.",
+                422
+            );
+        }
+
+        return $elegidas;
+    }
+
+    private function aCentavos(string|float|int $importe): int
+    {
+        return (int) round(((float) $importe) * 100);
     }
 
     // la tarea 165: copia el producto a catalogo_dinamico (Mongo) y borra la caché de su tienda.
