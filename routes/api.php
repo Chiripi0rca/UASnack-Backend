@@ -37,6 +37,17 @@ Route::post('/auth/verificar', [AuthController::class, 'verificar'])
 Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
     ->middleware('throttle:3,1');
 
+// HU-33 (Ricardo): recuperar y cambiar la contraseña. Las tres responden 204.
+// Olvidé: manda el código de 6 dígitos. Responde 204 exista o no el correo.
+// Route::post('/auth/olvide-password', [AuthController::class, 'olvidePassword'])
+//     ->middleware('throttle:3,1');
+// Restablecer: correo + código + password nueva. Cierra todas las sesiones del usuario.
+// Route::post('/auth/restablecer-password', [AuthController::class, 'restablecerPassword'])
+//     ->middleware('throttle:10,1');
+// Cambiar: password actual + password nueva, con sesión.
+// Route::post('/auth/cambiar-password', [AuthController::class, 'cambiarPassword'])
+//     ->middleware('auth:sanctum');
+
 
 // Alumno: catálogo. Requiere sesión.
 
@@ -55,6 +66,19 @@ Route::middleware('auth:sanctum')->group(function () {
         '/productos/{id}',
         [CatalogoController::class, 'detalleProducto']
     )->whereNumber('id');
+});
+
+
+// Alumno: franjas y espera. Requiere sesión. Sprint 03.
+// Las dos reciben ?minutos= (minutos de cocina del carrito) y responden con la forma
+// acordada en el documento de turnos del Sprint 03.
+
+Route::middleware('auth:sanctum')->group(function () {
+    // #53 (Ricardo): GET /tiendas/{id}/franjas?minutos=18&limite=8
+    //   { datos: [{ fecha, inicio, fin, minutos_restantes, disponible, descuento }], meta: { total } }
+
+    // #57 (José Ángel): GET /tiendas/{id}/espera?minutos=18
+    //   { datos: { min, max, saturada, pedidos_en_cocina, voy_saliendo_disponible } }
 });
 
 
@@ -78,6 +102,14 @@ Route::prefix('tienda')
             ->whereNumber('id');
         Route::patch('/productos/{id}/stock', [ProductoPanelController::class, 'actualizarStock'])
             ->whereNumber('id');
+
+        // #238 (Alfredo): subir la foto de un producto.
+        // Route::post('/productos/{id}/foto', [ProductoPanelController::class, 'subirFoto'])
+        //     ->whereNumber('id');
+
+        // #106 (José Ángel): capacidad por franja, en minutos de cocina.
+        // Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
+        // Route::put('/capacidad', [CapacidadController::class, 'actualizarCapacidad']);
     });
 
 
@@ -124,6 +156,7 @@ Route::prefix('admin')
     });
 
 // Consulta la sesión actual.
+// #218 (Ricardo): pasa a AuthController::yo y agrega facultad { id, nombre } y faltas.
 
 Route::middleware('auth:sanctum')->get('/auth/yo', function (
     \Illuminate\Http\Request $request
