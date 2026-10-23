@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
 use App\Http\Controllers\Api\V1\ProductoPanelController;
-use App\Http\Resources\UsuarioResource;
 use Illuminate\Support\Facades\Route;
 // Las rutas van agrupadas por bloque. Cada tarea agrega sus rutas
 // SOLO dentro de su bloque, así dos ramas que tocan este archivo no chocan en git.
@@ -155,13 +154,7 @@ Route::prefix('admin')
         );
     });
 
-// Consulta la sesión actual.
-// #218 (Ricardo): pasa a AuthController::yo y agrega facultad { id, nombre } y faltas.
 
-Route::middleware('auth:sanctum')->get('/auth/yo', function (
-    \Illuminate\Http\Request $request
-) {
-    return response()->json([
-        'usuario' => new UsuarioResource($request->user()),
-    ]);
-});
+Route::get('/auth/yo', [AuthController::class, 'yo'])
+    ->middleware('auth:sanctum');
+

@@ -13,6 +13,7 @@ use App\Services\VerificacionCorreoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use App\Http\Resources\PerfilResource;
 
 // Solo recibe la petición, delega al servicio y responde.
 // Los errores de negocio los lanza el servicio como ErrorNegocio y los responde bootstrap/app.php.
@@ -67,6 +68,15 @@ class AuthController extends Controller
 
         // 204 = todo bien, sin contenido que devolver.
         return response()->noContent();
+    }
+
+    public function yo(Request $request): JsonResponse
+    {
+        $usuario = $request->user()->load(['facultad']);
+
+        return response()->json([
+            'usuario' => new PerfilResource($usuario),
+        ]);
     }
 
     private function respuestaSesion(array $sesion): JsonResponse

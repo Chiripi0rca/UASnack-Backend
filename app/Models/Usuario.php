@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
+
 // Hereda de Authenticatable (no de Model) para que Laravel lo reconozca como el usuario que inicia sesión:
 // así $request->user() y auth()->user() devuelven un Usuario y el provider de config/auth.php puede validarlo.
 class Usuario extends Authenticatable
@@ -60,6 +61,10 @@ class Usuario extends Authenticatable
     public function rol(): BelongsTo
     {
         return $this->belongsTo(Rol::class, 'id_rol');
+    }
+    public function facultad(): BelongsTo
+    {
+        return $this->belongsTo(Facultades::class, 'id_facultad');
     }
 
     // Clave del rol: 'usuario', 'encargado_tienda' o 'administrador'.

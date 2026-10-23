@@ -1,7 +1,6 @@
 <?php
 
-namespace Tests\Feature;
-
+namespace Tests\Feature\Api\V1;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Categorias;
 use App\Models\Facultades;
