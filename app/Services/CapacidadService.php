@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoPedido;
 use App\Exceptions\ErrorNegocio;
 use App\Models\CapacidadFranja;
 use App\Models\OcupacionFranja;
+use App\Models\Pedido;
 use App\Models\Tienda;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -20,7 +22,7 @@ use LogicException;
 // Funciones de apoyo: ya regresan algo para que nadie espere a otro. Quien tiene la tarea
 // cambia SOLO el contenido; el nombre y lo que reciben/regresan no se cambian sin avisar.
 //   minutosOcupados → #105 (Alfredo).    Lee ocupacion_franjas: los minutos ya apartados en esa franja.
-//   cargaPendiente  → T-45 (Alfredo).    Hoy regresa 0: no hay pedidos en cocina.
+//   cargaPendiente  → T-45 (Alfredo).    Suma los minutos de los pedidos ACEPTADO y EN_PREPARACION.
 //   bloquearFranja  → #171 (José Ángel). Hoy busca la franja SIN bloquearla.
 class CapacidadService
 {
@@ -115,10 +117,13 @@ class CapacidadService
     }
 
     // T-45: minutos de cocina de los pedidos aceptados o en preparación que aún no están listos.
-    // Esqueleto: 0, porque todavía no existe la tabla pedidos. Así #56 funciona desde el primer día.
+    // Los que siguen EN_ESPERA (voy saliendo sin pulsar) no cuentan: todavía no entran a cocina.
     public function cargaPendiente(Tienda $tienda): int
     {
-        return 0;
+        return (int) Pedido::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->whereIn('estado', [EstadoPedido::Aceptado->value, EstadoPedido::EnPreparacion->value])
+            ->sum('minutos_cocina');
     }
 
     // #171: la fila de capacidad_franjas de esa franja, BLOQUEADA hasta que termine la transacción
