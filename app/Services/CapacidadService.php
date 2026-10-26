@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\EstadoDescuento;
 use App\Enums\EstadoPedido;
 use App\Exceptions\ErrorNegocio;
 use App\Models\CapacidadFranja;
+use App\Models\Descuento;
 use App\Models\OcupacionFranja;
 use App\Models\Pedido;
 use App\Models\Tienda;
@@ -26,15 +28,71 @@ use LogicException;
 //   bloquearFranja  → #171 (José Ángel). Hoy busca la franja SIN bloquearla.
 class CapacidadService
 {
+    // Hora de las tiendas (Culiacán). Las franjas, capacidad_franjas y ocupacion_franjas se guardan
+    // en hora local "de pared" (11:00 es 11:00 en la tienda), aunque la app corra en UTC.
+    public const ZONA_HORARIA = 'America/Mazatlan';
+
     // #52: las próximas franjas de la tienda a partir de $fecha, generadas desde su horario
-    // (horario_apertura a horario_cierre, cada duracion_franja_min).
+    // (horario_apertura a horario_cierre, cada duracion_franja_min). Solo las del mismo día.
     // Marca llena (disponible = false) la franja donde lo que queda no alcanza para $minutos,
     // que son los minutos de cocina del pedido que se está armando.
     // Regresa como máximo $limite franjas, nunca las 72 del día.
     // Lo que queda en cada franja = minutos_cocina de capacidad_franjas - minutosOcupados().
+    //
+    // Cada franja: ['fecha', 'inicio', 'fin', 'minutos_restantes', 'disponible', 'descuento'],
+    // la forma acordada para GET /tiendas/{id}/franjas (#53).
+    //
+    // Mismas reglas que reservar() (#105), para que lo que aquí sale disponible sí se pueda apartar:
+    //   - una franja sin renglón en capacidad_franjas no tiene cupo (sale llena);
+    //   - un pedido de 0 minutos (#237, no se cocina) cabe en cualquier franja.
+    // Si la tienda no tiene capacidad ningún bloque de ese día, ese día no opera: regresa vacío.
     public function franjasDisponibles(Tienda $tienda, Carbon $fecha, int $minutos, int $limite = 8): Collection
     {
-        throw new LogicException('Pendiente: #52');
+        $ahora = $fecha->copy()->setTimezone(self::ZONA_HORARIA);
+        $dia = $ahora->format('Y-m-d');
+
+        // Capacidad de cada franja de ese día de la semana, por hora de inicio ("11:00:00" => 24)
+        $capacidades = CapacidadFranja::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->where('dia_semana', $ahora->dayOfWeek)
+            ->pluck('minutos_cocina', 'hora_inicio')
+            ->mapWithKeys(fn ($minutosCocina, $hora) => [substr($hora, 0, 5) => (int) $minutosCocina]);
+
+        if ($capacidades->isEmpty()) {
+            return collect();
+        }
+
+        $descuentos = $this->descuentosDelDia($tienda, $ahora);
+        $duracion = max(1, (int) $tienda->duracion_franja_min);
+        $cierre = Carbon::parse("$dia {$tienda->horario_cierre}", self::ZONA_HORARIA);
+        $inicio = Carbon::parse("$dia {$tienda->horario_apertura}", self::ZONA_HORARIA);
+
+        $franjas = collect();
+
+        // La rejilla sale del horario: 07:00, 07:10, 07:20... La última termina a más tardar al cierre.
+        // Solo las que todavía no empiezan: la que ya está corriendo no da tiempo de cocinar.
+        for (; $inicio->copy()->addMinutes($duracion)->lte($cierre) && $franjas->count() < $limite; $inicio->addMinutes($duracion)) {
+            if ($inicio->lte($ahora)) {
+                continue;
+            }
+
+            $hora = $inicio->format('H:i');
+            $capacidad = $capacidades->get($hora);
+            $restantes = $capacidad === null
+                ? 0
+                : max(0, $capacidad - $this->minutosOcupados($tienda, $inicio));
+
+            $franjas->push([
+                'fecha' => $dia,
+                'inicio' => $hora,
+                'fin' => $inicio->copy()->addMinutes($duracion)->format('H:i'),
+                'minutos_restantes' => $restantes,
+                'disponible' => $minutos <= 0 || ($capacidad !== null && $restantes >= $minutos),
+                'descuento' => $this->descuentoDeLaFranja($descuentos, $hora),
+            ]);
+        }
+
+        return $franjas;
     }
 
     // #105: aparta $minutos de cocina en la franja que empieza en $franja.
@@ -124,6 +182,32 @@ class CapacidadService
             ->where('id_tienda', $tienda->id)
             ->whereIn('estado', [EstadoPedido::Aceptado->value, EstadoPedido::EnPreparacion->value])
             ->sum('minutos_cocina');
+    }
+
+    // #52: descuentos de la tienda que valen ese día: activos, vigentes y para ese día de la semana.
+    // Se piden una sola vez y descuentoDeLaFranja() los revisa hora por hora.
+    private function descuentosDelDia(Tienda $tienda, Carbon $ahora): Collection
+    {
+        $dia = $ahora->format('Y-m-d');
+
+        return Descuento::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->where('activo', EstadoDescuento::Activo->value)
+            ->whereDate('vigente_desde', '<=', $dia)
+            ->where(fn ($q) => $q->whereNull('vigente_hasta')->orWhereDate('vigente_hasta', '>=', $dia))
+            ->get()
+            ->filter(fn (Descuento $d) => in_array($ahora->dayOfWeek, json_decode($d->dias_semana, true) ?? [], true));
+    }
+
+    // #52: el porcentaje con el que se marca la franja ("11:00–11:10 · −10%"), o null.
+    // Si hay varios, el mayor: nunca se acumulan (§13.5).
+    private function descuentoDeLaFranja(Collection $descuentos, string $hora): ?int
+    {
+        $porcentaje = $descuentos
+            ->filter(fn (Descuento $d) => substr($d->hora_inicio, 0, 5) <= $hora && $hora < substr($d->hora_fin, 0, 5))
+            ->max('porcentaje');
+
+        return $porcentaje === null ? null : (int) $porcentaje;
     }
 
     // #171: la fila de capacidad_franjas de esa franja, BLOQUEADA hasta que termine la transacción
