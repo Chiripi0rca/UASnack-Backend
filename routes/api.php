@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
+use App\Http\Controllers\Api\V1\FranjaController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
 use App\Http\Controllers\Api\V1\ProductoPanelController;
@@ -73,8 +74,12 @@ Route::middleware('auth:sanctum')->group(function () {
 // acordada en el documento de turnos del Sprint 03.
 
 Route::middleware('auth:sanctum')->group(function () {
-    // #53 (Ricardo): GET /tiendas/{id}/franjas?minutos=18&limite=8
+    // #53: GET /tiendas/{id}/franjas?minutos=18&limite=8
     //   { datos: [{ fecha, inicio, fin, minutos_restantes, disponible, descuento }], meta: { total } }
+    Route::get(
+        '/tiendas/{id}/franjas',
+        [FranjaController::class, 'franjas']
+    )->whereNumber('id');
 
     // #57 (José Ángel): GET /tiendas/{id}/espera?minutos=18
     //   { datos: { min, max, saturada, pedidos_en_cocina, voy_saliendo_disponible } }
