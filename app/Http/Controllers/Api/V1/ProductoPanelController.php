@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ActualizarProductoRequest;
 use App\Http\Requests\ActualizarStockRequest;
 use App\Http\Requests\CrearProductoRequest;
+use App\Http\Requests\SubirFotoProductoRequest;
 use App\Http\Resources\ProductoPanelResource;
 use App\Services\ProductoPanelService;
 use Illuminate\Http\JsonResponse;
@@ -57,6 +58,18 @@ class ProductoPanelController extends Controller
             $id,
             $request->validated()['stock_hoy']
         );
+
+        return response()->json([
+            'datos' => (new ProductoPanelResource($producto))->resolve($request),
+        ]);
+    }
+
+    // POST /tienda/productos/{id}/foto (#238)
+    // El Form Request ya revisó que "foto" sea una imagen válida; el servicio la guarda.
+    // Responde el producto completo, con su foto_url nueva.
+    public function subirFoto(SubirFotoProductoRequest $request, int $id): JsonResponse
+    {
+        $producto = $this->productoService->subirFoto($request->user(), $id, $request->file('foto'));
 
         return response()->json([
             'datos' => (new ProductoPanelResource($producto))->resolve($request),
