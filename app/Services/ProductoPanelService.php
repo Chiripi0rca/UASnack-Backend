@@ -8,9 +8,12 @@ use App\Models\OpcionProducto;
 use App\Models\Producto;
 use App\Models\Tienda;
 use App\Models\Usuario;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 // Lógica del catálogo que administra el encargado desde su panel.
 class ProductoPanelService
@@ -94,6 +97,58 @@ class ProductoPanelService
         $this->catalogo->sincronizarMongo($producto);
 
         return $producto->fresh('opciones');
+    }
+
+    // #238: guarda la foto del producto en el disco "public" y deja su URL en foto_url.
+    // Si el producto ya tenía una foto subida desde el panel, esa se borra al final.
+    // Si su foto era una URL de otro sitio, no se toca: no es un archivo nuestro.
+    public function subirFoto(Usuario $encargado, int $id, UploadedFile $foto): Producto
+    {
+        // Solo un producto de su tienda; uno ajeno responde 404.
+        $producto = $this->buscarProducto($encargado, $id);
+
+        // Se apunta dónde está la foto vieja, para borrarla cuando la nueva ya esté guardada.
+        $rutaAnterior = $this->rutaEnDisco($producto->foto_url);
+
+        // Guarda el archivo en storage/app/public/productos/{id_tienda}/ con un nombre al azar:
+        // así dos fotos nunca se pisan y el navegador no se queda con una vieja en caché.
+        $ruta = $foto->store("productos/{$producto->id_tienda}", 'public');
+
+        try {
+            // URL pública de la foto, por ejemplo http://localhost:8000/storage/productos/1/abc.jpg
+            $producto->foto_url = Storage::disk('public')->url($ruta);
+            $producto->save();
+        } catch (Throwable $e) {
+            // Si el producto no se pudo guardar, se borra el archivo para no dejar basura.
+            Storage::disk('public')->delete($ruta);
+
+            throw $e;
+        }
+
+        // La nueva ya quedó guardada: ahora sí se borra la anterior.
+        if ($rutaAnterior) {
+            Storage::disk('public')->delete($rutaAnterior);
+        }
+
+        // Limpia la caché del catálogo para que el alumno vea la foto nueva al momento (#165).
+        $this->catalogo->sincronizarMongo($producto);
+
+        return $producto->fresh('opciones');
+    }
+
+    // Convierte la URL de una foto en su ruta dentro del disco "public":
+    //   "http://localhost:8000/storage/productos/1/abc.jpg" → "productos/1/abc.jpg"
+    // Regresa null si no hay foto o si la URL no es de nuestro disco (una foto de otro sitio).
+    private function rutaEnDisco(?string $url): ?string
+    {
+        // El principio que tienen todas las URLs del disco, por ejemplo "http://localhost:8000/storage/"
+        $base = Storage::disk('public')->url('');
+
+        if (! $url || ! str_starts_with($url, $base)) {
+            return null;
+        }
+
+        return substr($url, strlen($base));
     }
 
     // Extras y quitables del producto (HU-04). Cada lista que llega reemplaza a la anterior

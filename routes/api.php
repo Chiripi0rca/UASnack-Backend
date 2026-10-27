@@ -107,9 +107,9 @@ Route::prefix('tienda')
         Route::patch('/productos/{id}/stock', [ProductoPanelController::class, 'actualizarStock'])
             ->whereNumber('id');
 
-        // #238 (Alfredo): subir la foto de un producto.
-        // Route::post('/productos/{id}/foto', [ProductoPanelController::class, 'subirFoto'])
-        //     ->whereNumber('id');
+        // #238: subir la foto de un producto. Llega como multipart/form-data con el campo "foto".
+        Route::post('/productos/{id}/foto', [ProductoPanelController::class, 'subirFoto'])
+            ->whereNumber('id');
 
         // #106 (José Ángel): capacidad por franja, en minutos de cocina.
         // Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
