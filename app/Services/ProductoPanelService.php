@@ -73,6 +73,13 @@ class ProductoPanelService
             ]);
         }
 
+        // #237: si ahora no se cocina (mínimo 0), el máximo también tiene que quedar en 0.
+        if ((int) $producto->tiempo_prep_min === 0 && (int) $producto->tiempo_prep_max > 0) {
+            throw ValidationException::withMessages([
+                'tiempo_prep_max' => 'Si el producto no se cocina, el tiempo máximo también va en 0.',
+            ]);
+        }
+
         DB::transaction(function () use ($producto, $datos) {
             $producto->save();
             $this->guardarOpciones($producto, $datos);

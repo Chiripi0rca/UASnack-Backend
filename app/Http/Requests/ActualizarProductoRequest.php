@@ -20,8 +20,9 @@ class ActualizarProductoRequest extends FormRequest
             'descripcion'     => ['sometimes', 'nullable', 'string'],
             'id_categoria'    => ['sometimes', 'integer', 'exists:categorias,id'],
             'precio'          => ['sometimes', 'numeric', 'min:0', 'max:999999.99'],
-            'tiempo_prep_min' => ['sometimes', 'integer', 'min:1'],
-            'tiempo_prep_max' => ['sometimes', 'integer', 'min:1'],
+            // #237: 0 = no se cocina. Cómo quedan combinados con lo que ya tenía lo revisa el servicio.
+            'tiempo_prep_min' => ['sometimes', 'integer', 'min:0'],
+            'tiempo_prep_max' => ['sometimes', 'integer', 'min:0'],
             'foto_url'        => ['sometimes', 'nullable', 'url', 'max:255'],
             // Si llega una lista, REEMPLAZA a la anterior completa; si no llega, no se toca.
             'extras'             => ['sometimes', 'array', 'max:20'],
@@ -40,8 +41,8 @@ class ActualizarProductoRequest extends FormRequest
             'precio.numeric'      => 'El precio debe ser un número.',
             'precio.min'          => 'El precio no puede ser negativo.',
             'precio.max'          => 'El precio no puede pasar de 999,999.99.',
-            'tiempo_prep_min.min' => 'El tiempo mínimo de preparación debe ser de al menos 1 minuto.',
-            'tiempo_prep_max.min' => 'El tiempo máximo de preparación debe ser de al menos 1 minuto.',
+            'tiempo_prep_min.min' => 'El tiempo de preparación no puede ser negativo.',
+            'tiempo_prep_max.min' => 'El tiempo de preparación no puede ser negativo.',
             'foto_url.url'        => 'La foto debe ser una URL válida.',
             'extras.max'               => 'Un producto puede tener máximo 20 extras.',
             'extras.*.nombre.required' => 'Cada extra necesita un nombre.',

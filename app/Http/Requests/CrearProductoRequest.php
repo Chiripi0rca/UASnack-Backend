@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 // POST /tienda/productos.
 // id_tienda NO va aquí: sale del encargado autenticado, nunca del cliente.
@@ -23,9 +24,14 @@ class CrearProductoRequest extends FormRequest
             // numeric(8,2) en la BD: máximo 999,999.99
             'precio'          => ['required', 'numeric', 'min:0', 'max:999999.99'],
             'stock_hoy'       => ['required', 'integer', 'min:0'],
-            'tiempo_prep_min' => ['required', 'integer', 'min:1'],
-            // gte = mayor o igual que el otro campo del mismo request
-            'tiempo_prep_max' => ['required', 'integer', 'gte:tiempo_prep_min'],
+            // #237: 0 = no se cocina (botanas, refrescos). No ocupa cupo de cocina y la app no muestra tiempo.
+            'tiempo_prep_min' => ['required', 'integer', 'min:0'],
+            // gte = mayor o igual que el otro campo del mismo request.
+            // Si el mínimo es 0 el máximo también: "de 0 a 10 minutos" no tiene sentido.
+            'tiempo_prep_max' => [
+                'required', 'integer', 'gte:tiempo_prep_min',
+                Rule::when($this->filled('tiempo_prep_min') && (int) $this->input('tiempo_prep_min') === 0, ['max:0']),
+            ],
             'foto_url'        => ['nullable', 'url', 'max:255'],
             // Opciones propias del producto (HU-04). Las dos listas son opcionales.
             'extras'             => ['sometimes', 'array', 'max:20'],
@@ -51,9 +57,10 @@ class CrearProductoRequest extends FormRequest
             'stock_hoy.integer'        => 'El stock debe ser un número entero.',
             'stock_hoy.min'            => 'El stock no puede ser negativo.',
             'tiempo_prep_min.required' => 'El tiempo mínimo de preparación es obligatorio.',
-            'tiempo_prep_min.min'      => 'El tiempo mínimo de preparación debe ser de al menos 1 minuto.',
+            'tiempo_prep_min.min'      => 'El tiempo de preparación no puede ser negativo.',
             'tiempo_prep_max.required' => 'El tiempo máximo de preparación es obligatorio.',
             'tiempo_prep_max.gte'      => 'El tiempo máximo no puede ser menor que el mínimo.',
+            'tiempo_prep_max.max'      => 'Si el producto no se cocina, el tiempo máximo también va en 0.',
             'foto_url.url'             => 'La foto debe ser una URL válida.',
             'extras.max'               => 'Un producto puede tener máximo 20 extras.',
             'extras.*.nombre.required' => 'Cada extra necesita un nombre.',
