@@ -157,9 +157,54 @@ class CapacidadService
     //          'voy_saliendo_disponible' => bool]
     // saturada = max supera tiendas.umbral_espera_min.
     // voy_saliendo_disponible = false si ya hay cupo_bajo_demanda pedidos en espera.
-    public function estimarEspera(Tienda $tienda, int $minutos): array
+       public function estimarEspera(Tienda $tienda, int $minutos): array
     {
-        throw new LogicException('Pendiente: #56');
+        // carga_pendiente / capacidad + mi_pedido (§7.4)
+        $estimado = $this->cargaPendiente($tienda) / $this->capacidadPorMinuto($tienda) + max(0, $minutos);
+
+        // Siempre un rango: de estimado a estimado × 1.4. Si es muy chico, el máximo
+        // le gana al mínimo por 1 para que nunca salga un punto (16 → 16–22).
+        $min = (int) round($estimado);
+        $max = max((int) round($estimado * 1.4), $min + 1);
+
+        $enCocina = Pedido::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->whereIn('estado', [EstadoPedido::Aceptado->value, EstadoPedido::EnPreparacion->value])
+            ->count();
+
+        $enEspera = Pedido::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->where('estado', EstadoPedido::EnEspera->value)
+            ->count();
+
+        return [
+            'min' => $min,
+            'max' => $max,
+            'saturada' => $max > $tienda->umbral_espera_min,
+            'pedidos_en_cocina' => $enCocina,
+            'voy_saliendo_disponible' => $enEspera < $tienda->cupo_bajo_demanda,
+        ];
+    }
+
+    // #56: minutos de cocina que la tienda saca por cada minuto real, con la franja de ahorita:
+    // minutos_cocina de capacidad_franjas / duracion_franja_min (10 min de cocina en franjas de
+    // 10 min = 1.0). Si no hay renglón para esta hora, usa 1.0, que además evita dividir entre 0.
+    private function capacidadPorMinuto(Tienda $tienda): float
+    {
+        $ahora = Carbon::now(self::ZONA_HORARIA);
+
+        $minutosCocina = CapacidadFranja::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->where('dia_semana', $ahora->dayOfWeek)
+            ->where('hora_inicio', '<=', $ahora->format('H:i:s'))
+            ->where('hora_fin', '>', $ahora->format('H:i:s'))
+            ->value('minutos_cocina');
+
+        if (! $minutosCocina) {
+            return 1.0;
+        }
+
+        return $minutosCocina / max(1, (int) $tienda->duracion_franja_min);
     }
 
     // --- Funciones de apoyo ---
