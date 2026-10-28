@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CambiarPasswordRequest;
 use App\Http\Requests\LoginRequest;
+use App\Http\Requests\OlvidePasswordRequest;
 use App\Http\Requests\ReenviarCodigoRequest;
 use App\Http\Requests\RegistrarUsuarioRequest;
+use App\Http\Requests\RestablecerPasswordRequest;
 use App\Http\Requests\VerificarCorreoRequest;
 use App\Http\Resources\UsuarioResource;
 use App\Services\AuthService;
+use App\Services\RecuperacionPasswordService;
 use App\Services\VerificacionCorreoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +26,7 @@ class AuthController extends Controller
     public function __construct(
         private AuthService $auth,
         private VerificacionCorreoService $verificacion,
+        private RecuperacionPasswordService $recuperacion,
     ) {
     }
 
@@ -77,6 +82,34 @@ class AuthController extends Controller
         return response()->json([
             'usuario' => new PerfilResource($usuario),
         ]);
+    }
+
+    // HU-33 · Paso 1: manda el código. 204 exista o no el correo (CA-02).
+    public function olvidePassword(OlvidePasswordRequest $request): Response
+    {
+        $this->recuperacion->enviarCodigo($request->correo_institucional);
+
+        return response()->noContent();
+    }
+
+    // HU-33 · Paso 2: código + contraseña nueva. Cierra todas las sesiones (CA-04).
+    public function restablecerPassword(RestablecerPasswordRequest $request): Response
+    {
+        $this->recuperacion->restablecer(
+            $request->correo_institucional,
+            $request->codigo,
+            $request->password,
+        );
+
+        return response()->noContent();
+    }
+
+    // HU-33 · Con sesión: contraseña actual + nueva (CA-05).
+    public function cambiarPassword(CambiarPasswordRequest $request): Response
+    {
+        $this->recuperacion->cambiar($request->user(), $request->password_actual, $request->password);
+
+        return response()->noContent();
     }
 
     private function respuestaSesion(array $sesion): JsonResponse

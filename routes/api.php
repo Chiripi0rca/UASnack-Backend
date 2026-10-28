@@ -38,16 +38,18 @@ Route::post('/auth/verificar', [AuthController::class, 'verificar'])
 Route::post('/auth/reenviar-codigo', [AuthController::class, 'reenviarCodigo'])
     ->middleware('throttle:3,1');
 
-// HU-33 (Ricardo): recuperar y cambiar la contraseña. Las tres responden 204.
+// HU-33: recuperar y cambiar la contraseña. Las tres responden 204.
 // Olvidé: manda el código de 6 dígitos. Responde 204 exista o no el correo.
-// Route::post('/auth/olvide-password', [AuthController::class, 'olvidePassword'])
-//     ->middleware('throttle:3,1');
+Route::post('/auth/olvide-password', [AuthController::class, 'olvidePassword'])
+    ->middleware('throttle:3,1');
+
 // Restablecer: correo + código + password nueva. Cierra todas las sesiones del usuario.
-// Route::post('/auth/restablecer-password', [AuthController::class, 'restablecerPassword'])
-//     ->middleware('throttle:10,1');
-// Cambiar: password actual + password nueva, con sesión.
-// Route::post('/auth/cambiar-password', [AuthController::class, 'cambiarPassword'])
-//     ->middleware('auth:sanctum');
+Route::post('/auth/restablecer-password', [AuthController::class, 'restablecerPassword'])
+    ->middleware('throttle:10,1');
+
+// Cambiar: password actual + password nueva, con sesión. Cierra las demás sesiones.
+Route::post('/auth/cambiar-password', [AuthController::class, 'cambiarPassword'])
+    ->middleware(['auth:sanctum', 'throttle:5,1']);
 
 
 // Alumno: catálogo. Requiere sesión.
