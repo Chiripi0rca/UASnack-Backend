@@ -7,8 +7,6 @@
     <title>Verificación UASnack</title>
 </head>
 <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 40px;">
-
-```
 <div style="
     max-width: 600px;
     margin: auto;
@@ -55,7 +53,5 @@
     </p>
 
 </div>
-```
-
 </body>
 </html>
