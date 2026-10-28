@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
+use App\Http\Controllers\Api\V1\EsperaController;
 use App\Http\Controllers\Api\V1\FranjaController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
@@ -81,8 +82,12 @@ Route::middleware('auth:sanctum')->group(function () {
         [FranjaController::class, 'franjas']
     )->whereNumber('id');
 
-    // #57 (José Ángel): GET /tiendas/{id}/espera?minutos=18
+    // #57 GET /tiendas/{id}/espera?minutos=18
     //   { datos: { min, max, saturada, pedidos_en_cocina, voy_saliendo_disponible } }
+     Route::get(
+        '/tiendas/{id}/espera',
+        [EsperaController::class, 'espera']
+    )->whereNumber('id');
 });
 
 
