@@ -22,6 +22,8 @@ class ProductoResource extends JsonResource
             'stock_hoy' => $this['stock_hoy'],       // tope de unidades que se pueden pedir
             'tiempo_prep_min' => $this['tiempo_prep_min'],
             'tiempo_prep_max' => $this['tiempo_prep_max'],
+            // #237: false = no se cocina (tiempos en 0). La app no muestra tiempo de preparación.
+            'se_prepara' => $this['tiempo_prep_min'] > 0,
             'agotado' => $this['agotado'],           // el cliente lo atenúa; nunca se quita de la lista
             'personalizaciones' => $this['personalizaciones'], // extras y quitables para los chips
         ];

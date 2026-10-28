@@ -21,6 +21,8 @@ class ProductoPanelResource extends JsonResource
             'stock_hoy'       => $this->stock_hoy,
             'tiempo_prep_min' => $this->tiempo_prep_min,
             'tiempo_prep_max' => $this->tiempo_prep_max,
+            // #237: la casilla "Se prepara al momento" del formulario del panel
+            'se_prepara'      => $this->tiempo_prep_min > 0,
             'foto_url'        => $this->foto_url,
             // Si el modelo castea estado_producto a enum, ->value saca el texto;
             // si es texto plano, lo deja igual.
