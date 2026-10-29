@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CapacidadController;
 use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\EsperaController;
@@ -116,9 +117,9 @@ Route::prefix('tienda')
         Route::post('/productos/{id}/foto', [ProductoPanelController::class, 'subirFoto'])
             ->whereNumber('id');
 
-        // #106 (José Ángel): capacidad por franja, en minutos de cocina.
-        // Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
-        // Route::put('/capacidad', [CapacidadController::class, 'actualizarCapacidad']);
+        // #106: capacidad por franja. Se guarda en minutos de cocina; el dueño la ve y la captura en piezas.
+        Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
+        Route::put('/capacidad', [CapacidadController::class, 'actualizarCapacidad']);
     });
 
 
