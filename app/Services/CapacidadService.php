@@ -13,7 +13,6 @@ use App\Models\Tienda;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use LogicException;
 
 // ESQUELETO (Sprint 03). Franjas, cupo y tiempo de espera (§7 del documento general).
 // Cada método lo completa su tarea:
@@ -256,8 +255,11 @@ class CapacidadService
     }
 
     // #171: la fila de capacidad_franjas de esa franja, BLOQUEADA hasta que termine la transacción
-    // (->lockForUpdate()). La usa reservar() (#105).
-    // Esqueleto: la busca sin bloquear, para que #105 ya pueda llamarla.
+    // (->lockForUpdate()). La usan reservar() y liberar() (#105).
+    // El bloqueo solo dura mientras haya una transacción abierta: quien llame debe estar dentro de
+    // DB::transaction(). Una segunda petición sobre la misma franja espera aquí hasta que la primera
+    // termine, y entonces lee los minutos ya actualizados: por eso no se toma el último cupo dos veces.
+    // Si la franja no tiene renglón no hay nada que bloquear y regresa null (reservar() la trata como llena).
     // dia_semana va de 0 (domingo) a 6 (sábado), igual que Carbon::dayOfWeek.
     public function bloquearFranja(Tienda $tienda, Carbon $franja): ?CapacidadFranja
     {
@@ -265,6 +267,7 @@ class CapacidadService
             ->where('id_tienda', $tienda->id)
             ->where('dia_semana', $franja->dayOfWeek)
             ->where('hora_inicio', $franja->format('H:i:s'))
+            ->lockForUpdate()
             ->first();
     }
 }
