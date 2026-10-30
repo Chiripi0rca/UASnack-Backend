@@ -18,18 +18,31 @@ class FranjaController extends Controller
     }
 
     // GET /tiendas/{id}/franjas?minutos=18&limite=8 (#53)
+    // Cada franja es una hora para RECOGER el pedido (se cocina en las franjas de antes).
+    // meta.cabe_hoy = false: el pedido no cabe en ninguna hora del día. Con minutos_maximos_hoy la app
+    // le dice cuánto sí cabe ("tu pedido necesita 45 min y hoy solo caben hasta 30"). Si
+    // minutos_maximos_hoy es 0, la tienda ya no tiene horas para hoy, sin importar el tamaño del pedido.
     public function franjas(FranjasRequest $request, int $id): JsonResponse
     {
+        $tienda = $this->catalogo->tiendaActiva($id); // 404 si no existe o está de baja
+        $ahora = now(CapacidadService::ZONA_HORARIA);
+        $minutos = $request->integer('minutos');
+
         $franjas = $this->capacidad->franjasDisponibles(
-            $this->catalogo->tiendaActiva($id), // 404 si no existe o está de baja
-            now(CapacidadService::ZONA_HORARIA),
-            $request->integer('minutos'),
+            $tienda,
+            $ahora,
+            $minutos,
             $request->integer('limite', FranjasRequest::LIMITE_MAXIMO),
         );
+        $maximo = $this->capacidad->minutosMaximosHoy($tienda, $ahora);
 
         return response()->json([
             'datos' => $franjas->values(),
-            'meta' => ['total' => $franjas->count()],
+            'meta' => [
+                'total' => $franjas->count(),
+                'cabe_hoy' => $franjas->contains(fn (array $franja) => $franja['disponible']),
+                'minutos_maximos_hoy' => $maximo,
+            ],
         ]);
     }
 }

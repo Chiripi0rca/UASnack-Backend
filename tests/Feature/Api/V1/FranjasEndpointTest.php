@@ -35,7 +35,7 @@ class FranjasEndpointTest extends TestCase
             'id_facultad' => Facultades::firstOrFail()->id,
             'cupo_bajo_demanda' => 3,
             'umbral_espera_min' => 15,
-        ]);
+        ])->fresh();
 
         foreach (['11:00', '11:10', '11:20'] as $hora) {
             CapacidadFranja::create([
@@ -60,21 +60,32 @@ class FranjasEndpointTest extends TestCase
         $this->getJson("/api/v1/tiendas/{$this->tienda->id}/franjas?minutos=6")->assertUnauthorized();
     }
 
+    // Cada franja es una hora para recoger. La de 11:00 no: antes no hay cocina sin empezar.
     public function test_responde_las_franjas_con_la_forma_acordada(): void
     {
         $this->conSesion()
             ->getJson("/api/v1/tiendas/{$this->tienda->id}/franjas?minutos=6&limite=2")
             ->assertOk()
-            ->assertJsonPath('meta.total', 2)
             ->assertExactJson([
                 'datos' => [
                     ['fecha' => '2026-10-26', 'inicio' => '11:00', 'fin' => '11:10',
-                        'minutos_restantes' => 24, 'disponible' => true, 'descuento' => null],
+                        'minutos_restantes' => 0, 'disponible' => false, 'descuento' => null],
                     ['fecha' => '2026-10-26', 'inicio' => '11:10', 'fin' => '11:20',
                         'minutos_restantes' => 24, 'disponible' => true, 'descuento' => null],
                 ],
-                'meta' => ['total' => 2],
+                // Hoy queda cocina a las 11:00, 11:10 y 11:20: 72 min para recoger desde las 11:30
+                'meta' => ['total' => 2, 'cabe_hoy' => true, 'minutos_maximos_hoy' => 72],
             ]);
+    }
+
+    public function test_un_pedido_que_no_cabe_hoy_lo_dice_y_dice_cuanto_cabe(): void
+    {
+        $this->conSesion()
+            ->getJson("/api/v1/tiendas/{$this->tienda->id}/franjas?minutos=100")
+            ->assertOk()
+            ->assertJsonPath('meta.cabe_hoy', false)
+            ->assertJsonPath('meta.minutos_maximos_hoy', 72)
+            ->assertJsonPath('datos.0.disponible', false);
     }
 
     public function test_sin_limite_regresa_como_maximo_8(): void

@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\DB;
 
 // ESQUELETO (Sprint 03). Franjas, cupo y tiempo de espera (§7 del documento general).
 // Cada método lo completa su tarea:
-//   franjasDisponibles → #52  (Ricardo)
-//   reservar, liberar  → #105 (Alfredo)
+//   franjasDisponibles → #52  (Ricardo). La franja es la hora de RECOGER; se cocina en las de antes.
+//   reservar, liberar  → #105 (Alfredo). Reparten el pedido en las franjas anteriores a la recogida.
 //   estimarEspera      → #56  (José Ángel)
 //
 // Funciones de apoyo: ya regresan algo para que nadie espere a otro. Quien tiene la tarea
@@ -31,121 +31,153 @@ class CapacidadService
     // en hora local "de pared" (11:00 es 11:00 en la tienda), aunque la app corra en UTC.
     public const ZONA_HORARIA = 'America/Mazatlan';
 
-    // #52: las próximas franjas de la tienda a partir de $fecha, generadas desde su horario
-    // (horario_apertura a horario_cierre, cada duracion_franja_min). Solo las del mismo día.
-    // Marca llena (disponible = false) la franja donde lo que queda no alcanza para $minutos,
-    // que son los minutos de cocina del pedido que se está armando.
-    // Regresa como máximo $limite franjas, nunca las 72 del día.
-    // Lo que queda en cada franja = minutos_cocina de capacidad_franjas - minutosOcupados().
+    // #52: a qué horas puede pasar el alumno por su pedido, a partir de $fecha. Solo las del mismo día.
+    //
+    // La franja que elige el alumno es la hora de RECOGER: el pedido se cocina en las franjas
+    // ANTERIORES que todavía no empiezan (la más cercana a la recogida primero, ver reservar()).
+    // Por eso una hora para recoger está disponible si la cocina que queda en las franjas de antes
+    // alcanza para los $minutos del pedido. Consecuencias:
+    //   - a las 11:09 la franja de las 11:10 no se ofrece para algo que se cocina: no hay antes
+    //     ninguna franja sin empezar donde cocinarlo; la primera es la de las 11:20;
+    //   - la primera franja del día (07:00) nunca se ofrece para algo que se cocina;
+    //   - un pedido grande encuentra lugar más tarde, cuando hay más franjas antes para cocinarlo;
+    //   - un pedido de 0 minutos (#237, no se cocina) se puede recoger en cualquier franja.
+    // Regresa como máximo $limite franjas, nunca las 72 del día. Si en las primeras $limite no cabe
+    // el pedido pero más tarde sí, la lista empieza en la primera donde cabe.
+    // Si la tienda no tiene capacidad ningún bloque de ese día, ese día no opera: regresa vacío.
     //
     // Cada franja: ['fecha', 'inicio', 'fin', 'minutos_restantes', 'disponible', 'descuento'],
-    // la forma acordada para GET /tiendas/{id}/franjas (#53).
-    //
-    // Mismas reglas que reservar() (#105), para que lo que aquí sale disponible sí se pueda apartar:
-    //   - una franja sin renglón en capacidad_franjas no tiene cupo (sale llena);
-    //   - un pedido de 0 minutos (#237, no se cocina) cabe en cualquier franja.
-    // Si la tienda no tiene capacidad ningún bloque de ese día, ese día no opera: regresa vacío.
+    // la forma acordada para GET /tiendas/{id}/franjas (#53). minutos_restantes = la cocina que
+    // queda antes de esa hora de recogida.
     public function franjasDisponibles(Tienda $tienda, Carbon $fecha, int $minutos, int $limite = 8): Collection
     {
         $ahora = $fecha->copy()->setTimezone(self::ZONA_HORARIA);
-        $dia = $ahora->format('Y-m-d');
+        $rejilla = $this->rejillaDelDia($tienda, $ahora);
 
-        // Capacidad de cada franja de ese día de la semana, por hora de inicio ("11:00:00" => 24)
-        $capacidades = CapacidadFranja::withoutGlobalScopes()
-            ->where('id_tienda', $tienda->id)
-            ->where('dia_semana', $ahora->dayOfWeek)
-            ->pluck('minutos_cocina', 'hora_inicio')
-            ->mapWithKeys(fn ($minutosCocina, $hora) => [substr($hora, 0, 5) => (int) $minutosCocina]);
-
-        if ($capacidades->isEmpty()) {
+        if ($rejilla->isEmpty()) {
             return collect();
         }
 
         $descuentos = $this->descuentosDelDia($tienda, $ahora);
-        $duracion = max(1, (int) $tienda->duracion_franja_min);
-        $cierre = Carbon::parse("$dia {$tienda->horario_cierre}", self::ZONA_HORARIA);
-        $inicio = Carbon::parse("$dia {$tienda->horario_apertura}", self::ZONA_HORARIA);
 
-        $franjas = collect();
+        $horas = $rejilla
+            ->filter(fn (array $franja) => ! $franja['empezo'])
+            ->map(fn (array $franja) => [
+                'fecha' => $franja['inicio']->format('Y-m-d'),
+                'inicio' => $franja['inicio']->format('H:i'),
+                'fin' => $franja['fin']->format('H:i'),
+                'minutos_restantes' => $franja['cocina_antes'],
+                'disponible' => $minutos <= 0 || $franja['cocina_antes'] >= $minutos,
+                'descuento' => $this->descuentoDeLaFranja($descuentos, $franja['inicio']->format('H:i')),
+            ])
+            ->values();
 
-        // La rejilla sale del horario: 07:00, 07:10, 07:20... La última termina a más tardar al cierre.
-        // Solo las que todavía no empiezan: la que ya está corriendo no da tiempo de cocinar.
-        for (; $inicio->copy()->addMinutes($duracion)->lte($cierre) && $franjas->count() < $limite; $inicio->addMinutes($duracion)) {
-            if ($inicio->lte($ahora)) {
-                continue;
-            }
+        $primeraQueSirve = $horas->search(fn (array $franja) => $franja['disponible']);
+        $desde = $primeraQueSirve !== false && $primeraQueSirve >= $limite ? $primeraQueSirve : 0;
 
-            $hora = $inicio->format('H:i');
-            $capacidad = $capacidades->get($hora);
-            $restantes = $capacidad === null
-                ? 0
-                : max(0, $capacidad - $this->minutosOcupados($tienda, $inicio));
-
-            $franjas->push([
-                'fecha' => $dia,
-                'inicio' => $hora,
-                'fin' => $inicio->copy()->addMinutes($duracion)->format('H:i'),
-                'minutos_restantes' => $restantes,
-                'disponible' => $minutos <= 0 || ($capacidad !== null && $restantes >= $minutos),
-                'descuento' => $this->descuentoDeLaFranja($descuentos, $hora),
-            ]);
-        }
-
-        return $franjas;
+        return $horas->slice($desde, $limite)->values();
     }
 
-    // #105: aparta $minutos de cocina en la franja que empieza en $franja.
-    // Va dentro de DB::transaction() y lee la franja con bloquearFranja() (#171),
-    // así dos pedidos al mismo tiempo no toman el último cupo.
-    // Si no alcanza, lanza ErrorNegocio('FRANJA_LLENA', ..., 409).
-    public function reservar(Tienda $tienda, Carbon $franja, int $minutos): void
+    // #53: el pedido más grande, en minutos de cocina, que todavía cabe hoy en alguna hora de recogida.
+    // Es la cocina que queda antes de la última franja del día. 0 si la tienda ya no cocina hoy.
+    // Con esto la app le dice al alumno "tu pedido necesita 45 min y hoy solo caben hasta 30".
+    public function minutosMaximosHoy(Tienda $tienda, Carbon $fecha): int
+    {
+        $ahora = $fecha->copy()->setTimezone(self::ZONA_HORARIA);
+
+        return (int) $this->rejillaDelDia($tienda, $ahora)
+            ->filter(fn (array $franja) => ! $franja['empezo'])
+            ->max('cocina_antes');
+    }
+
+    // #105: aparta $minutos de cocina para un pedido que se RECOGE en la franja que empieza en $recogida.
+    // Se cocina en las franjas anteriores que todavía no empiezan: primero llena la más cercana a la
+    // recogida y lo que falte lo toma de las de antes (un pedido grande se reparte en varias).
+    // Regresa el reparto, para guardarlo en pedidos.reparto_cocina y poder devolverlo con liberar():
+    //   [['franja_inicio' => '2026-10-26 11:10:00', 'minutos' => 20], ['franja_inicio' => '... 11:00:00', 'minutos' => 5]]
+    // Si no alcanza, lanza ErrorNegocio('FRANJA_LLENA', ..., 409) y no aparta nada.
+    // Va dentro de DB::transaction() y bloquea cada franja con bloquearFranja() (#171), siempre de la
+    // más temprana a la más tardía para que dos reservas nunca se esperen en orden cruzado.
+    public function reservar(Tienda $tienda, Carbon $recogida, int $minutos): array
     {
         // Un pedido que no se cocina (#237, tiempo 0) no ocupa cupo.
         if ($minutos <= 0) {
-            return;
+            return [];
         }
 
         // Si quien llama ya abrió una transacción (PedidoService::crear), esta se vuelve un
-        // savepoint dentro de ella y el bloqueo dura hasta que termine la de afuera.
-        DB::transaction(function () use ($tienda, $franja, $minutos) {
-            $capacidad = $this->bloquearFranja($tienda, $franja);
+        // savepoint dentro de ella y los bloqueos duran hasta que termine la de afuera.
+        return DB::transaction(function () use ($tienda, $recogida, $minutos) {
+            $libres = [];
+            foreach ($this->franjasParaCocinar($tienda, $recogida) as $franja) {
+                $capacidad = $this->bloquearFranja($tienda, $franja);
 
-            // Sin renglón de capacidad, la tienda no cocina en esa franja: no cabe nada.
-            if (! $capacidad || $this->minutosOcupados($tienda, $franja) + $minutos > $capacidad->minutos_cocina) {
-                throw new ErrorNegocio('FRANJA_LLENA', 'Esa franja ya se llenó. Elige otra.', 409);
+                // Sin renglón de capacidad, la tienda no cocina en esa franja.
+                $libres[$franja->format('Y-m-d H:i:s')] = $capacidad
+                    ? max(0, (int) $capacidad->minutos_cocina - $this->minutosOcupados($tienda, $franja))
+                    : 0;
             }
 
-            $ocupacion = OcupacionFranja::withoutGlobalScopes()->firstOrCreate(
-                ['id_tienda' => $tienda->id, 'franja_inicio' => $franja->format('Y-m-d H:i:s')],
-                ['minutos_ocupados' => 0],
-            );
-            $ocupacion->increment('minutos_ocupados', $minutos);
+            if (array_sum($libres) < $minutos) {
+                throw new ErrorNegocio('FRANJA_LLENA', 'Esa hora ya se llenó. Elige otra.', 409);
+            }
+
+            // De la franja más cercana a la recogida hacia atrás
+            $reparto = [];
+            $falta = $minutos;
+            foreach (array_reverse($libres, true) as $franjaInicio => $disponibles) {
+                if ($falta === 0) {
+                    break;
+                }
+
+                $toma = min($falta, $disponibles);
+                if ($toma === 0) {
+                    continue;
+                }
+
+                $ocupacion = OcupacionFranja::withoutGlobalScopes()->firstOrCreate(
+                    ['id_tienda' => $tienda->id, 'franja_inicio' => $franjaInicio],
+                    ['minutos_ocupados' => 0],
+                );
+                $ocupacion->increment('minutos_ocupados', $toma);
+
+                $reparto[] = ['franja_inicio' => $franjaInicio, 'minutos' => $toma];
+                $falta -= $toma;
+            }
+
+            return $reparto;
         });
     }
 
-    // #105: devuelve a la franja los minutos de un pedido cancelado o rechazado.
-    public function liberar(Tienda $tienda, Carbon $franja, int $minutos): void
+    // #105: devuelve a sus franjas los minutos de un pedido cancelado o rechazado.
+    // $reparto es justo lo que regresó reservar() (guardado en pedidos.reparto_cocina).
+    public function liberar(Tienda $tienda, array $reparto): void
     {
-        if ($minutos <= 0) {
+        if ($reparto === []) {
             return;
         }
 
-        DB::transaction(function () use ($tienda, $franja, $minutos) {
-            // Mismo bloqueo que reservar(): una reserva y una liberación de la misma franja no se pisan.
-            $this->bloquearFranja($tienda, $franja);
+        // Mismo orden de bloqueo que reservar(): de la franja más temprana a la más tardía.
+        usort($reparto, fn (array $a, array $b) => strcmp($a['franja_inicio'], $b['franja_inicio']));
 
-            $ocupacion = OcupacionFranja::withoutGlobalScopes()
-                ->where('id_tienda', $tienda->id)
-                ->where('franja_inicio', $franja->format('Y-m-d H:i:s'))
-                ->first();
+        DB::transaction(function () use ($tienda, $reparto) {
+            foreach ($reparto as $parte) {
+                $franja = Carbon::parse($parte['franja_inicio']);
+                $this->bloquearFranja($tienda, $franja);
 
-            if (! $ocupacion) {
-                return;
+                $ocupacion = OcupacionFranja::withoutGlobalScopes()
+                    ->where('id_tienda', $tienda->id)
+                    ->where('franja_inicio', $franja->format('Y-m-d H:i:s'))
+                    ->first();
+
+                if (! $ocupacion) {
+                    continue;
+                }
+
+                // Nunca por debajo de 0.
+                $ocupacion->minutos_ocupados = max(0, $ocupacion->minutos_ocupados - (int) $parte['minutos']);
+                $ocupacion->save();
             }
-
-            // Nunca por debajo de 0.
-            $ocupacion->minutos_ocupados = max(0, $ocupacion->minutos_ocupados - $minutos);
-            $ocupacion->save();
         });
     }
 
@@ -207,6 +239,84 @@ class CapacidadService
     }
 
     // --- Funciones de apoyo ---
+
+    // La rejilla del día de $ahora, de la apertura al cierre, con lo que necesita franjasDisponibles():
+    //   inicio, fin    → Carbon en hora de la tienda
+    //   empezo         → la franja ya empezó: ni se ofrece para recoger ni se cocina en ella
+    //   libres         → minutos de cocina que le quedan (0 si ya empezó o no tiene capacidad)
+    //   cocina_antes   → suma de "libres" de todas las franjas anteriores: la cocina disponible
+    //                    para un pedido que se recoge en esta franja
+    // Vacía si la tienda no tiene capacidad ningún bloque de ese día.
+    private function rejillaDelDia(Tienda $tienda, Carbon $ahora): Collection
+    {
+        $dia = $ahora->format('Y-m-d');
+
+        // Capacidad de cada franja de ese día de la semana, por hora de inicio ("11:00" => 20)
+        $capacidades = CapacidadFranja::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->where('dia_semana', $ahora->dayOfWeek)
+            ->pluck('minutos_cocina', 'hora_inicio')
+            ->mapWithKeys(fn ($minutosCocina, $hora) => [substr($hora, 0, 5) => (int) $minutosCocina]);
+
+        if ($capacidades->isEmpty()) {
+            return collect();
+        }
+
+        // Lo ya apartado ese día, en una sola consulta ("11:00" => 12)
+        $ocupados = OcupacionFranja::withoutGlobalScopes()
+            ->where('id_tienda', $tienda->id)
+            ->whereDate('franja_inicio', $dia)
+            ->pluck('minutos_ocupados', 'franja_inicio')
+            ->mapWithKeys(fn ($minutosOcupados, $inicio) => [substr($inicio, 11, 5) => (int) $minutosOcupados]);
+
+        $duracion = max(1, (int) $tienda->duracion_franja_min);
+        $cierre = Carbon::parse("$dia {$tienda->horario_cierre}", self::ZONA_HORARIA);
+
+        $rejilla = collect();
+        $cocinaAntes = 0;
+
+        // 07:00, 07:10, 07:20... La última termina a más tardar al cierre.
+        for ($inicio = Carbon::parse("$dia {$tienda->horario_apertura}", self::ZONA_HORARIA);
+            $inicio->copy()->addMinutes($duracion)->lte($cierre);
+            $inicio->addMinutes($duracion)) {
+            $hora = $inicio->format('H:i');
+            $empezo = $inicio->lte($ahora);
+            $capacidad = $capacidades->get($hora);
+            $libres = $empezo || $capacidad === null ? 0 : max(0, $capacidad - $ocupados->get($hora, 0));
+
+            $rejilla->push([
+                'inicio' => $inicio->copy(),
+                'fin' => $inicio->copy()->addMinutes($duracion),
+                'empezo' => $empezo,
+                'libres' => $libres,
+                'cocina_antes' => $cocinaAntes,
+            ]);
+
+            $cocinaAntes += $libres;
+        }
+
+        return $rejilla;
+    }
+
+    // Las franjas donde se puede cocinar un pedido que se recoge en $recogida: las de ese mismo día
+    // que todavía no empiezan y que terminan a más tardar cuando empieza la recogida.
+    // De la más temprana a la más tardía. $recogida está en hora de la tienda ("de pared").
+    private function franjasParaCocinar(Tienda $tienda, Carbon $recogida): array
+    {
+        $duracion = max(1, (int) $tienda->duracion_franja_min);
+        $dia = $recogida->format('Y-m-d');
+        $ahora = Carbon::now(self::ZONA_HORARIA)->format('Y-m-d H:i:s');
+        $apertura = Carbon::parse("$dia {$tienda->horario_apertura}");
+
+        $franjas = [];
+        for ($inicio = Carbon::parse($recogida->format('Y-m-d H:i:s'))->subMinutes($duracion);
+            $inicio->gte($apertura) && $inicio->format('Y-m-d H:i:s') > $ahora;
+            $inicio->subMinutes($duracion)) {
+            array_unshift($franjas, $inicio->copy());
+        }
+
+        return $franjas;
+    }
 
     // #105: minutos de cocina ya apartados en la franja que empieza en $franja.
     // Si nadie ha reservado en esa franja todavía, no hay renglón y regresa 0.

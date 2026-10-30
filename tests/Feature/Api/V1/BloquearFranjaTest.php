@@ -42,7 +42,7 @@ class BloquearFranjaTest extends TestCase
             'id_facultad' => Facultades::firstOrFail()->id,
             'cupo_bajo_demanda' => 3,
             'umbral_espera_min' => 15,
-        ]);
+        ])->fresh();
 
         $this->franja = Carbon::parse('2026-10-26 11:00:00');
         CapacidadFranja::create([
@@ -87,12 +87,16 @@ class BloquearFranjaTest extends TestCase
         $this->assertStringContainsString('for update', strtolower($consultas[0]['query']));
     }
 
+    // Se recoge a las 11:10: los 24 min se cocinan en la franja de las 11:00
     public function test_dos_reservas_del_ultimo_cupo_solo_una_se_queda(): void
     {
-        $this->capacidad->reservar($this->tienda, $this->franja, 24);
+        Carbon::setTestNow(Carbon::parse('2026-10-26 10:53:00', CapacidadService::ZONA_HORARIA));
+        $recogida = $this->franja->copy()->addMinutes(10);
+
+        $this->capacidad->reservar($this->tienda, $recogida, 24);
 
         try {
-            $this->capacidad->reservar($this->tienda, $this->franja, 24);
+            $this->capacidad->reservar($this->tienda, $recogida, 24);
             $this->fail('La segunda reserva debió lanzar FRANJA_LLENA');
         } catch (ErrorNegocio $e) {
             $this->assertSame('FRANJA_LLENA', $e->codigo);
@@ -101,5 +105,12 @@ class BloquearFranjaTest extends TestCase
 
         // Nunca más de lo que cabe
         $this->assertSame(24, $this->capacidad->minutosOcupados($this->tienda, $this->franja));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 }

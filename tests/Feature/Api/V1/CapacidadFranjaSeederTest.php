@@ -66,8 +66,11 @@ class CapacidadFranjaSeederTest extends TestCase
         $capacidad = app(CapacidadService::class);
         $tienda = Tienda::findOrFail(1);
         $lunesALas11 = Carbon::parse('2026-10-26 11:00:00');
+        Carbon::setTestNow(Carbon::parse('2026-10-26 10:53:00', CapacidadService::ZONA_HORARIA));
 
-        $capacidad->reservar($tienda, $lunesALas11, 6);
+        // Para recoger a las 11:10 se cocina a las 11:00
+        $capacidad->reservar($tienda, $lunesALas11->copy()->addMinutes(10), 6);
+        Carbon::setTestNow();
 
         $this->assertSame(6, $capacidad->minutosOcupados($tienda, $lunesALas11));
     }
