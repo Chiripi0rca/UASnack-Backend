@@ -20,10 +20,11 @@ class CapacidadFranjaSeeder extends Seeder
 
     public function run(): void
     {
-        // Horario en que cocina cada tienda y cuántos minutos de cocina tiene cada franja
+        // Horario en que cocina cada tienda y cuántas personas cocinan en cada franja (#106).
+        // Lo normal en las tiendas de la facultad son 2 personas todo el día.
         $capacidades = [
-            ['id_tienda' => 1, 'desde' => '08:00', 'hasta' => '18:00', 'minutos_cocina' => 10],
-            ['id_tienda' => 2, 'desde' => '09:00', 'hasta' => '17:00', 'minutos_cocina' => 15],
+            ['id_tienda' => 1, 'desde' => '08:00', 'hasta' => '18:00', 'personas' => 2],
+            ['id_tienda' => 2, 'desde' => '09:00', 'hasta' => '17:00', 'personas' => 2],
         ];
 
         foreach ($capacidades as $capacidad) {
@@ -46,7 +47,8 @@ class CapacidadFranjaSeeder extends Seeder
                         ],
                         [
                             'hora_fin' => $inicio->copy()->addMinutes($duracion)->format('H:i:s'),
-                            'minutos_cocina' => $capacidad['minutos_cocina'],
+                            // Cada persona aporta la duración de la franja: 2 × 10 = 20 minutos de cocina
+                            'minutos_cocina' => $capacidad['personas'] * $duracion,
                         ]
                     );
                 }

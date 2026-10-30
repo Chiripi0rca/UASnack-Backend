@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Exceptions\ErrorNegocio;
 use App\Models\CapacidadFranja;
-use App\Models\Producto;
 use App\Models\Tienda;
 use App\Models\Usuario;
 use Illuminate\Support\Collection;
@@ -13,17 +12,19 @@ use Illuminate\Validation\ValidationException;
 
 // Capacidad de cocina que el encargado configura desde su panel (#106).
 // Se guarda en MINUTOS de cocina (capacidad_franjas.minutos_cocina), que es lo que leen
-// franjasDisponibles, reservar y estimarEspera; el dueño la ve y la captura en PIEZAS.
+// franjasDisponibles, reservar y estimarEspera. El dueño la ve y la captura en PERSONAS:
+// cuántas personas cocinan pedidos de la app en esa franja. Cada persona aporta la duración
+// de la franja como minutos de trabajo: 2 personas en franjas de 10 min = 20 minutos de cocina.
 class CapacidadPanelService
 {
-    // Las franjas de la tienda del encargado, ordenadas, junto con lo que vale una pieza.
-    // Regresa ['minutos_por_pieza' => ?float, 'franjas' => Collection<CapacidadFranja>].
+    // Las franjas de la tienda del encargado, ordenadas, junto con la duración de sus franjas.
+    // Regresa ['duracion_franja_min' => int, 'franjas' => Collection<CapacidadFranja>].
     public function capacidadDe(Usuario $encargado): array
     {
         $tienda = $this->tiendaDe($encargado);
 
         return [
-            'minutos_por_pieza' => $this->minutosPorPieza($tienda),
+            'duracion_franja_min' => $this->duracionDe($tienda),
             'franjas' => CapacidadFranja::where('id_tienda', $tienda->id)
                 ->orderBy('dia_semana')
                 ->orderBy('hora_inicio')
@@ -31,28 +32,19 @@ class CapacidadPanelService
         ];
     }
 
-    // Guarda las franjas que llegan: piezas → minutos de cocina. Crea la franja si no existía
+    // Guarda las franjas que llegan: personas → minutos de cocina. Crea la franja si no existía
     // y actualiza la que ya estaba (la llave es tienda + día + hora). Las demás no se tocan.
-    // $franjas: [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5], ...]
+    // $franjas: [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 2], ...]
     public function actualizarCapacidad(Usuario $encargado, array $franjas): array
     {
         $tienda = $this->tiendaDe($encargado);
-        $minutosPorPieza = $this->minutosPorPieza($tienda);
-
-        if ($minutosPorPieza === null) {
-            throw new ErrorNegocio(
-                'SIN_PRODUCTOS_QUE_SE_COCINEN',
-                'Agrega productos que se preparen para poder medir tu capacidad en piezas.',
-                422
-            );
-        }
 
         $this->validarRejilla($tienda, $franjas);
 
-        $duracion = max(1, (int) $tienda->duracion_franja_min);
+        $duracion = $this->duracionDe($tienda);
 
         // Todo o nada: si una franja falla, no queda la capacidad a medias.
-        DB::transaction(function () use ($tienda, $franjas, $minutosPorPieza, $duracion) {
+        DB::transaction(function () use ($tienda, $franjas, $duracion) {
             foreach ($franjas as $franja) {
                 $inicio = $this->aMinutos($franja['hora_inicio']);
 
@@ -64,7 +56,7 @@ class CapacidadPanelService
                     ],
                     [
                         'hora_fin' => $this->aHora($inicio + $duracion),
-                        'minutos_cocina' => $this->piezasAMinutos($franja['piezas'], $minutosPorPieza),
+                        'minutos_cocina' => $this->personasAMinutos($franja['personas'], $duracion),
                     ]
                 );
             }
@@ -73,35 +65,31 @@ class CapacidadPanelService
         return $this->capacidadDe($encargado);
     }
 
-    // Cuántos minutos de cocina vale una pieza en esta tienda: el promedio de tiempo_prep_min
-    // de sus productos que sí se cocinan (los de tiempo 0, #237, no cuentan).
-    // null si la tienda no tiene ninguno todavía. Con 2 decimales, igual que lo ve el panel.
-    public function minutosPorPieza(Tienda $tienda): ?float
+    // 2 personas × franjas de 10 min = 20 minutos de cocina.
+    public function personasAMinutos(int $personas, int $duracion): int
     {
-        $promedio = Producto::where('id_tienda', $tienda->id)
-            ->where('tiempo_prep_min', '>', 0)
-            ->avg('tiempo_prep_min');
-
-        return $promedio === null ? null : round((float) $promedio, 2);
+        return $personas * $duracion;
     }
 
-    // 5 piezas × 3.0 min = 15 minutos de cocina.
-    public function piezasAMinutos(int $piezas, float $minutosPorPieza): int
+    // Lo contrario, para mostrarle al dueño su capacidad en personas. Normalmente es entero;
+    // una capacidad vieja que no cuadre (15 min en franjas de 10) sale con un decimal: 1.5.
+    public function minutosAPersonas(int $minutos, int $duracion): int|float
     {
-        return (int) round($piezas * $minutosPorPieza);
+        $personas = round($minutos / $duracion, 1);
+
+        return $personas == (int) $personas ? (int) $personas : $personas;
     }
 
-    // Lo contrario, para mostrarle al dueño su capacidad en piezas. null si no hay con qué medir.
-    public function minutosAPiezas(int $minutos, ?float $minutosPorPieza): ?int
+    public function duracionDe(Tienda $tienda): int
     {
-        return $minutosPorPieza ? (int) round($minutos / $minutosPorPieza) : null;
+        return max(1, (int) $tienda->duracion_franja_min);
     }
 
     // Cada hora debe ser una franja real de la tienda: caer en la rejilla que sale de su horario
     // (07:00, 07:10, 07:20...) y terminar a más tardar al cierre. Si no, 422 marcando el renglón.
     private function validarRejilla(Tienda $tienda, array $franjas): void
     {
-        $duracion = max(1, (int) $tienda->duracion_franja_min);
+        $duracion = $this->duracionDe($tienda);
         $apertura = $this->aMinutos($tienda->horario_apertura);
         $cierre = $this->aMinutos($tienda->horario_cierre);
         $errores = [];

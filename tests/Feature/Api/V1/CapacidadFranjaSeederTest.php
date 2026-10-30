@@ -33,7 +33,7 @@ class CapacidadFranjaSeederTest extends TestCase
         // Tienda 1: de 08:00 a 18:00 en franjas de 10 min = 60 por día, de lunes a viernes
         $this->assertSame(60 * 5, CapacidadFranja::where('id_tienda', 1)->count());
         $this->assertDatabaseHas('capacidad_franjas', [
-            'id_tienda' => 1, 'dia_semana' => 1, 'hora_inicio' => '11:00:00', 'hora_fin' => '11:10:00', 'minutos_cocina' => 10,
+            'id_tienda' => 1, 'dia_semana' => 1, 'hora_inicio' => '11:00:00', 'hora_fin' => '11:10:00', 'minutos_cocina' => 20,
         ]);
     }
 

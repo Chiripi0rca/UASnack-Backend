@@ -7,10 +7,10 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 // Forma de una franja de capacidad en el panel del encargado (#106).
-// Lleva los minutos de cocina (lo que se guarda) y su equivalencia en piezas (lo que ve el dueño).
+// Lleva los minutos de cocina (lo que se guarda) y su equivalencia en personas (lo que ve el dueño).
 class CapacidadFranjaResource extends JsonResource
 {
-    public function __construct($resource, private ?float $minutosPorPieza)
+    public function __construct($resource, private int $duracionFranja)
     {
         parent::__construct($resource);
     }
@@ -23,8 +23,8 @@ class CapacidadFranjaResource extends JsonResource
             'hora_inicio' => substr($this->hora_inicio, 0, 5),
             'hora_fin' => substr($this->hora_fin, 0, 5),
             'minutos_cocina' => $this->minutos_cocina,
-            'piezas' => app(CapacidadPanelService::class)
-                ->minutosAPiezas($this->minutos_cocina, $this->minutosPorPieza),
+            'personas' => app(CapacidadPanelService::class)
+                ->minutosAPersonas((int) $this->minutos_cocina, $this->duracionFranja),
         ];
     }
 }

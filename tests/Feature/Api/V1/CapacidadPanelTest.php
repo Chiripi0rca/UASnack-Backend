@@ -3,9 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\CapacidadFranja;
-use App\Models\Categorias;
 use App\Models\Facultades;
-use App\Models\Producto;
 use App\Models\Rol;
 use App\Models\Tienda;
 use App\Models\Usuario;
@@ -15,8 +13,8 @@ use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 // GET y PUT /tienda/capacidad (#106): la capacidad de cocina por franja del encargado.
-// Se guarda en minutos de cocina; el dueño la ve y la captura en piezas.
-// En estas pruebas una pieza vale 3 minutos: los productos de la tienda tardan 2 y 4 (promedio 3).
+// Se guarda en minutos de cocina; el dueño la ve y la captura en personas que cocinan.
+// Las franjas de estas tiendas duran 10 minutos: cada persona aporta 10 minutos de cocina.
 class CapacidadPanelTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,23 +25,15 @@ class CapacidadPanelTest extends TestCase
 
     private Tienda $otraTienda;
 
-    private Categorias $categoria;
-
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->seed(JerarquiaInstitucionalSeeder::class);
-        $this->categoria = Categorias::create(['nombre' => 'Bebidas']);
 
         $this->encargado = $this->usuario('encargado@uas.edu.mx', Rol::ENCARGADO_TIENDA);
         $this->miTienda = $this->tienda($this->encargado);
         $this->otraTienda = $this->tienda($this->usuario('otro@uas.edu.mx', Rol::ENCARGADO_TIENDA));
-
-        // Promedio de 3 min. El de tiempo 0 (#237, no se cocina) no cuenta.
-        $this->producto($this->miTienda, 'Café', 2);
-        $this->producto($this->miTienda, 'Torta', 4);
-        $this->producto($this->miTienda, 'Papitas', 0);
     }
 
     // --- GET ---
@@ -63,55 +53,68 @@ class CapacidadPanelTest extends TestCase
             ->assertJsonPath('error.codigo', 'SIN_PERMISO');
     }
 
-    public function test_lista_solo_las_franjas_de_su_tienda_con_piezas(): void
+    public function test_lista_solo_las_franjas_de_su_tienda_con_personas(): void
     {
-        $this->franja($this->miTienda, 1, '11:10', 9);
-        $this->franja($this->miTienda, 1, '11:00', 12);
+        $this->franja($this->miTienda, 1, '11:10', 10);
+        $this->franja($this->miTienda, 1, '11:00', 20);
         $this->franja($this->otraTienda, 1, '11:00', 30);
 
         $this->comoEncargado()->getJson('/api/v1/tienda/capacidad')
             ->assertOk()
             ->assertExactJson([
                 'datos' => [
-                    ['dia_semana' => 1, 'hora_inicio' => '11:00', 'hora_fin' => '11:10', 'minutos_cocina' => 12, 'piezas' => 4],
-                    ['dia_semana' => 1, 'hora_inicio' => '11:10', 'hora_fin' => '11:20', 'minutos_cocina' => 9, 'piezas' => 3],
+                    ['dia_semana' => 1, 'hora_inicio' => '11:00', 'hora_fin' => '11:10', 'minutos_cocina' => 20, 'personas' => 2],
+                    ['dia_semana' => 1, 'hora_inicio' => '11:10', 'hora_fin' => '11:20', 'minutos_cocina' => 10, 'personas' => 1],
                 ],
-                'meta' => ['total' => 2, 'minutos_por_pieza' => 3.0],
+                'meta' => ['total' => 2, 'duracion_franja_min' => 10],
             ]);
     }
 
-    public function test_sin_productos_que_se_cocinen_las_piezas_salen_null(): void
+    // Capacidad guardada antes de capturar personas: 15 min en franjas de 10 no da un entero
+    public function test_una_capacidad_que_no_cuadra_sale_con_un_decimal(): void
     {
-        Producto::withoutGlobalScopes()->where('id_tienda', $this->miTienda->id)->delete();
-        $this->franja($this->miTienda, 1, '11:00', 12);
+        $this->franja($this->miTienda, 1, '11:00', 15);
 
         $this->comoEncargado()->getJson('/api/v1/tienda/capacidad')
             ->assertOk()
-            ->assertJsonPath('datos.0.minutos_cocina', 12)
-            ->assertJsonPath('datos.0.piezas', null)
-            ->assertJsonPath('meta.minutos_por_pieza', null);
+            ->assertJsonPath('datos.0.minutos_cocina', 15)
+            ->assertJsonPath('datos.0.personas', 1.5);
     }
 
     // --- PUT ---
 
-    public function test_convierte_piezas_a_minutos_y_crea_la_franja(): void
+    public function test_convierte_personas_a_minutos_y_crea_la_franja(): void
     {
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 2]],
         ])
             ->assertOk()
-            ->assertJsonPath('datos.0.minutos_cocina', 15)
-            ->assertJsonPath('datos.0.piezas', 5)
+            ->assertJsonPath('datos.0.minutos_cocina', 20)
+            ->assertJsonPath('datos.0.personas', 2)
             ->assertJsonPath('meta.total', 1);
 
-        // 5 piezas × 3 min = 15 minutos de cocina, en la franja de 10 minutos que empieza a las 11:00
+        // 2 personas × 10 min de franja = 20 minutos de cocina, en la franja que empieza a las 11:00
         $this->assertDatabaseHas('capacidad_franjas', [
             'id_tienda' => $this->miTienda->id,
             'dia_semana' => 1,
             'hora_inicio' => '11:00:00',
             'hora_fin' => '11:10:00',
-            'minutos_cocina' => 15,
+            'minutos_cocina' => 20,
         ]);
+    }
+
+    // Si las franjas duran 15 minutos, cada persona aporta 15
+    public function test_usa_la_duracion_de_franja_de_la_tienda(): void
+    {
+        $this->miTienda->update(['duracion_franja_min' => 15]);
+
+        $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 2]],
+        ])
+            ->assertOk()
+            ->assertJsonPath('datos.0.hora_fin', '11:15')
+            ->assertJsonPath('datos.0.minutos_cocina', 30)
+            ->assertJsonPath('meta.duracion_franja_min', 15);
     }
 
     public function test_actualiza_la_franja_que_ya_existe_sin_duplicarla(): void
@@ -119,11 +122,11 @@ class CapacidadPanelTest extends TestCase
         $this->franja($this->miTienda, 1, '11:00', 12);
 
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 2]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 3]],
         ])->assertOk();
 
         $this->assertSame(1, CapacidadFranja::withoutGlobalScopes()->where('id_tienda', $this->miTienda->id)->count());
-        $this->assertDatabaseHas('capacidad_franjas', ['id_tienda' => $this->miTienda->id, 'hora_inicio' => '11:00:00', 'minutos_cocina' => 6]);
+        $this->assertDatabaseHas('capacidad_franjas', ['id_tienda' => $this->miTienda->id, 'hora_inicio' => '11:00:00', 'minutos_cocina' => 30]);
     }
 
     public function test_no_toca_las_otras_franjas_ni_las_de_otra_tienda(): void
@@ -132,17 +135,17 @@ class CapacidadPanelTest extends TestCase
         $this->franja($this->otraTienda, 1, '11:00', 30);
 
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 5]],
         ])->assertOk()->assertJsonPath('meta.total', 2);
 
         $this->assertDatabaseHas('capacidad_franjas', ['id_tienda' => $this->miTienda->id, 'hora_inicio' => '11:10:00', 'minutos_cocina' => 9]);
         $this->assertDatabaseHas('capacidad_franjas', ['id_tienda' => $this->otraTienda->id, 'hora_inicio' => '11:00:00', 'minutos_cocina' => 30]);
     }
 
-    public function test_cero_piezas_es_valido(): void
+    public function test_cero_personas_es_valido(): void
     {
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 0]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 0]],
         ])->assertOk()->assertJsonPath('datos.0.minutos_cocina', 0);
     }
 
@@ -150,7 +153,7 @@ class CapacidadPanelTest extends TestCase
     {
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
             'id_tienda' => $this->otraTienda->id,
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5, 'id_tienda' => $this->otraTienda->id]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 5, 'id_tienda' => $this->otraTienda->id]],
         ])->assertOk();
 
         $this->assertDatabaseHas('capacidad_franjas', ['id_tienda' => $this->miTienda->id, 'hora_inicio' => '11:00:00']);
@@ -161,8 +164,8 @@ class CapacidadPanelTest extends TestCase
     {
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
             'franjas' => [
-                ['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5],
-                ['dia_semana' => 1, 'hora_inicio' => '11:05', 'piezas' => 5], // las franjas son de 10 min
+                ['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 5],
+                ['dia_semana' => 1, 'hora_inicio' => '11:05', 'personas' => 5], // las franjas son de 10 min
             ],
         ])
             ->assertUnprocessable()
@@ -175,7 +178,7 @@ class CapacidadPanelTest extends TestCase
     {
         // La tienda abre a las 07:00 y cierra a las 19:00: la franja de las 19:00 ya no cabe
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '19:00', 'piezas' => 5]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '19:00', 'personas' => 5]],
         ])->assertUnprocessable()->assertJsonValidationErrorFor('franjas.0.hora_inicio', 'error.campos');
     }
 
@@ -187,35 +190,41 @@ class CapacidadPanelTest extends TestCase
             ->assertJsonPath('error.campos.franjas.0', 'Indica las franjas que quieres cambiar.');
 
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 9, 'hora_inicio' => 'mediodia', 'piezas' => -1]],
+            'franjas' => [['dia_semana' => 9, 'hora_inicio' => 'mediodia', 'personas' => -1]],
         ])
             ->assertUnprocessable()
             ->assertJsonValidationErrorFor('franjas.0.dia_semana', 'error.campos')
             ->assertJsonValidationErrorFor('franjas.0.hora_inicio', 'error.campos')
-            ->assertJsonValidationErrorFor('franjas.0.piezas', 'error.campos');
+            ->assertJsonValidationErrorFor('franjas.0.personas', 'error.campos');
     }
 
-    public function test_sin_productos_que_se_cocinen_no_se_puede_guardar(): void
+    // Con personas la capacidad ya no depende del catálogo: una tienda sin productos también la guarda
+    public function test_no_depende_de_los_productos_de_la_tienda(): void
     {
-        Producto::withoutGlobalScopes()->where('id_tienda', $this->miTienda->id)->delete();
-
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'piezas' => 5]],
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 2]],
+        ])->assertOk()->assertJsonPath('datos.0.minutos_cocina', 20);
+    }
+
+    public function test_no_acepta_mas_de_20_personas(): void
+    {
+        $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
+            'franjas' => [['dia_semana' => 1, 'hora_inicio' => '11:00', 'personas' => 21]],
         ])
             ->assertUnprocessable()
-            ->assertJsonPath('error.codigo', 'SIN_PRODUCTOS_QUE_SE_COCINEN');
+            ->assertJsonPath('error.campos', ['franjas.0.personas' => ['No pueden ser más de 20 personas en una franja.']]);
     }
 
     // Una capacidad ajustada aquí es la que leen franjasDisponibles, reservar y estimarEspera
     public function test_lo_guardado_queda_en_minutos_de_cocina(): void
     {
         $this->comoEncargado()->putJson('/api/v1/tienda/capacidad', [
-            'franjas' => [['dia_semana' => 2, 'hora_inicio' => '08:20', 'piezas' => 4]],
+            'franjas' => [['dia_semana' => 2, 'hora_inicio' => '08:20', 'personas' => 4]],
         ])->assertOk();
 
         $franja = CapacidadFranja::withoutGlobalScopes()->where('id_tienda', $this->miTienda->id)->firstOrFail();
 
-        $this->assertSame(12, (int) $franja->minutos_cocina);
+        $this->assertSame(40, (int) $franja->minutos_cocina);
     }
 
     private function comoEncargado(): static
@@ -250,19 +259,6 @@ class CapacidadPanelTest extends TestCase
             'duracion_franja_min' => 10,
             'cupo_bajo_demanda' => 3,
             'umbral_espera_min' => 15,
-        ]);
-    }
-
-    private function producto(Tienda $tienda, string $nombre, int $tiempoMin): Producto
-    {
-        return Producto::withoutGlobalScopes()->create([
-            'id_tienda' => $tienda->id,
-            'id_categoria' => $this->categoria->id,
-            'nombre' => $nombre,
-            'precio' => 30,
-            'stock_hoy' => 10,
-            'tiempo_prep_min' => $tiempoMin,
-            'tiempo_prep_max' => $tiempoMin + 2,
         ]);
     }
 

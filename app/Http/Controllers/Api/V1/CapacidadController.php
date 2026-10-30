@@ -23,7 +23,7 @@ class CapacidadController extends Controller
     }
 
     // PUT /tienda/capacidad (#106)
-    // Recibe piezas por franja; el servicio las convierte a minutos de cocina y las guarda.
+    // Recibe personas por franja; el servicio las convierte a minutos de cocina y las guarda.
     public function actualizarCapacidad(ActualizarCapacidadRequest $request): JsonResponse
     {
         $capacidad = $this->capacidadService->actualizarCapacidad(
@@ -34,19 +34,19 @@ class CapacidadController extends Controller
         return $this->respuesta($request, $capacidad);
     }
 
-    // { datos: [{ dia_semana, hora_inicio, hora_fin, minutos_cocina, piezas }],
-    //   meta: { total, minutos_por_pieza } }
+    // { datos: [{ dia_semana, hora_inicio, hora_fin, minutos_cocina, personas }],
+    //   meta: { total, duracion_franja_min } }
     private function respuesta(Request $request, array $capacidad): JsonResponse
     {
-        $minutosPorPieza = $capacidad['minutos_por_pieza'];
+        $duracion = $capacidad['duracion_franja_min'];
 
         return response()->json([
             'datos' => $capacidad['franjas']
-                ->map(fn ($franja) => (new CapacidadFranjaResource($franja, $minutosPorPieza))->resolve($request))
+                ->map(fn ($franja) => (new CapacidadFranjaResource($franja, $duracion))->resolve($request))
                 ->values(),
             'meta' => [
                 'total' => $capacidad['franjas']->count(),
-                'minutos_por_pieza' => $minutosPorPieza,
+                'duracion_franja_min' => $duracion,
             ],
         ]);
     }
