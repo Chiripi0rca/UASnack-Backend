@@ -35,6 +35,8 @@ class Pedido extends Model
         'minutos_cocina',
         'franja_inicio',
         'franja_fin',
+        // En qué franjas se apartó su cocina, lo que regresa CapacidadService::reservar()
+        'reparto_cocina',
         'pin_retiro',
         'tiempo_estimado_min',
         'motivo_rechazo',
@@ -55,6 +57,7 @@ class Pedido extends Model
         'total' => 'decimal:2',
         'franja_inicio' => 'datetime',
         'franja_fin' => 'datetime',
+        'reparto_cocina' => 'array',
         'creado_en' => 'datetime',
         'aceptado_en' => 'datetime',
         'listo_en' => 'datetime',
