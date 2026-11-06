@@ -5,16 +5,51 @@ namespace App\Services;
 use App\Enums\EstadoPedido;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Pedido;
+use App\Models\Usuario;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 // Pedidos del alumno: cada método es un paso de la máquina de estados (§6 del documento general).
 //   voySaliendo → #58 (Alfredo). Mete a cocina un pedido "en espera" (§7.3).
+// ESQUELETO (Sprint 04). Los completa su tarea y cambia SOLO el contenido:
+//   crear → #148 (José Ángel), con el stock de #192
+//   pedidoPorClave → #74 (Ricardo)
+//   marcarPagado → #62 (Ricardo)
 class PedidoService
 {
     // Laravel crea CapacidadService y lo pasa aquí solo (inyección de dependencias).
     // Se usa para calcular el tiempo de espera en el momento en que el pedido entra a cocina.
     public function __construct(private CapacidadService $capacidad)
     {
+    }
+
+    // #148: crea el pedido en PENDIENTE_PAGO. En orden, dentro de una transacción:
+    // clave repetida (pedidoPorClave) → tienda con cuenta_habilitada → stock → total → reservar → cobrar
+    // (PagoService::crearIntento) → guardar. En reparto_cocina se guarda lo que regresa reservar().
+    // $franja es la hora de RECOGER; null en modo "voy saliendo", que no reserva cocina.
+    public function crear(
+        Usuario $usuario,
+        int $idTienda,
+        array $lineas,
+        string $modoRetiro,
+        ?Carbon $franja,
+        string $claveIdem,
+    ): Pedido {
+        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Crear el pedido todavía no está disponible.', 501);
+    }
+
+    // #74: el pedido que ya se creó con esta clave, o null si la clave es nueva. Si dos peticiones con
+    // la misma clave llegan al mismo tiempo, la restricción UNIQUE de la tabla deja pasar solo a una.
+    public function pedidoPorClave(string $claveIdem): ?Pedido
+    {
+        return null;
+    }
+
+    // #62: Stripe confirmó el cobro. Pasa a PAGADO, o a EN_ESPERA en modo "voy saliendo" (§7.3).
+    // Nunca se llama desde crear(): el pago solo se da por hecho cuando llega el aviso de Stripe.
+    public function marcarPagado(Pedido $pedido): Pedido
+    {
+        return $pedido;
     }
 
     // #58: el alumno pidió en modo "voy saliendo" y su pedido quedó pagado pero EN_ESPERA,

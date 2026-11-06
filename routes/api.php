@@ -97,10 +97,32 @@ Route::middleware('auth:sanctum')->group(function () {
 // Alumno: pedidos. Requiere sesión y correo verificado.
 
 Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
-    // Aquí va POST /pedidos cuando exista PedidoController (tarea 49).
+    // #148 (José Ángel): POST /pedidos con el header Idempotency-Key. La forma del JSON está en el
+    // documento de turnos del Sprint 04.
     // Route::post('/pedidos', [PedidoController::class, 'crear'])
     //     ->middleware('throttle:10,1');
 });
+
+
+// Alumno: pagos. Requiere sesión. Sprint 04.
+
+Route::middleware('auth:sanctum')->group(function () {
+    // #69 (Alfredo): pagos y reembolsos del alumno.
+    // Route::get('/pagos', [PagoController::class, 'historial']);
+
+    // #188 (Alfredo): tarjetas guardadas.
+    // Route::get('/pagos/metodos', [PagoController::class, 'metodos']);
+
+    // #65 (Alfredo): guardar una tarjeta (regresa client_secret) y eliminarla (204).
+    // Route::post('/pagos/metodos', [PagoController::class, 'agregarMetodo']);
+    // Route::delete('/pagos/metodos/{id}', [PagoController::class, 'eliminarMetodo']);
+});
+
+
+// Avisos de Stripe. Sin sesión: lo que lo protege es la firma. Sprint 04.
+
+// #146 (José Ángel): crea la ruta y verifica la firma. #62 (Ricardo) le agrega los eventos de pago.
+// Route::post('/webhooks/stripe', [StripeWebhookController::class, 'recibir']);
 
 
 // Panel de tienda (encargado). Prefijo /tienda.
@@ -122,6 +144,10 @@ Route::prefix('tienda')
         // #106: capacidad por franja. Se guarda en minutos de cocina; el dueño la ve y la captura en piezas.
         Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
         Route::put('/capacidad', [CapacidadController::class, 'actualizarCapacidad']);
+
+        // #109 (Ricardo): alta de la cuenta bancaria en Stripe y su estado.
+        // Route::post('/pagos/onboarding', [PagoController::class, 'onboarding']);
+        // Route::get('/pagos/estado', [PagoController::class, 'estadoCuenta']);
     });
 
 
