@@ -11,6 +11,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
+use App\Http\Middleware\ClaveIdempotencia;
 use App\Http\Middleware\CorreoVerificado;
 use App\Http\Middleware\EsRol;
 use App\Http\Middleware\ResolverTenant;
@@ -31,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // "rol" deja pasar solo a ciertos roles y "tenant" resuelve la facultad y la tienda (tarea 162).
         $middleware->alias([
             'correo.verificado' => CorreoVerificado::class,
+            // #74: exige el header Idempotency-Key (UUID) al crear pedidos
+            'idempotencia' => ClaveIdempotencia::class,
             'rol' => EsRol::class,
             'tenant' => ResolverTenant::class,
         ]);
