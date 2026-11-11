@@ -6,6 +6,8 @@ use App\Enums\EstadoPedido;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Pedido;
 use App\Models\Usuario;
+use Closure;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -13,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 //   voySaliendo → #58 (Alfredo). Mete a cocina un pedido "en espera" (§7.3).
 // ESQUELETO (Sprint 04). Los completa su tarea y cambia SOLO el contenido:
 //   crear → #148 (José Ángel), con el stock de #192
-//   pedidoPorClave → #74 (Ricardo)
+//   pedidoPorClave y sinRepetirClave → #74 (Ricardo) ✓
 //   marcarPagado → #62 (Ricardo)
 class PedidoService
 {
@@ -38,11 +40,44 @@ class PedidoService
         throw new ErrorNegocio('NO_IMPLEMENTADO', 'Crear el pedido todavía no está disponible.', 501);
     }
 
-    // #74: el pedido que ya se creó con esta clave, o null si la clave es nueva. Si dos peticiones con
-    // la misma clave llegan al mismo tiempo, la restricción UNIQUE de la tabla deja pasar solo a una.
-    public function pedidoPorClave(string $claveIdem): ?Pedido
+    // #74: el pedido que ya se creó con esta clave, o null si la clave es nueva.
+    // Con $usuario, revisa además que el pedido sea suyo: la clave es única en TODA la tabla, así que si
+    // otro alumno ya la usó no se le puede regresar su pedido (sería mostrarle datos ajenos) ni crear
+    // otro con ella. Se responde 409 y la app genera una clave nueva.
+    public function pedidoPorClave(string $claveIdem, ?Usuario $usuario = null): ?Pedido
     {
-        return null;
+        // Sin el filtro del encargado (#163): aquí se busca por la clave, venga quien venga
+        $pedido = Pedido::withoutGlobalScopes()
+            ->where('clave_idempotencia', strtolower($claveIdem))
+            ->first();
+
+        if ($pedido && $usuario && $pedido->id_usuario !== $usuario->id) {
+            throw new ErrorNegocio(
+                'CLAVE_IDEMPOTENCIA_EN_USO',
+                'No pudimos registrar tu pedido. Inténtalo de nuevo.',
+                409,
+            );
+        }
+
+        return $pedido;
+    }
+
+    // #74: dos peticiones con la misma clave al mismo tiempo (el alumno tocó dos veces o la red reintentó)
+    // pueden pasar las dos por pedidoPorClave() antes de que exista el pedido. La restricción UNIQUE de
+    // clave_idempotencia deja guardar solo a la primera; la segunda choca aquí y, en vez de responder 500,
+    // regresa el pedido que guardó la primera. Así nunca hay dos pedidos ni dos cobros con una clave.
+    //
+    // crear() (#148) envuelve en esto su transacción:
+    //   return $this->sinRepetirClave($claveIdem, $usuario, fn () => DB::transaction(function () { ... }));
+    // La transacción va ADENTRO: al chocar ya se deshizo todo (cupo reservado incluido) y se puede volver
+    // a consultar. Si choca otra restricción (por ejemplo, un folio repetido), el error se vuelve a lanzar.
+    public function sinRepetirClave(string $claveIdem, Usuario $usuario, Closure $crear): Pedido
+    {
+        try {
+            return $crear();
+        } catch (UniqueConstraintViolationException $error) {
+            return $this->pedidoPorClave($claveIdem, $usuario) ?? throw $error;
+        }
     }
 
     // #62: Stripe confirmó el cobro. Pasa a PAGADO, o a EN_ESPERA en modo "voy saliendo" (§7.3).

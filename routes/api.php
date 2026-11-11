@@ -99,8 +99,9 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
     // #148 (José Ángel): POST /pedidos con el header Idempotency-Key. La forma del JSON está en el
     // documento de turnos del Sprint 04.
+    // "idempotencia" (#74) exige el header con un UUID y lo deja en $request->attributes->get('clave_idempotencia').
     // Route::post('/pedidos', [PedidoController::class, 'crear'])
-    //     ->middleware('throttle:10,1');
+    //     ->middleware(['idempotencia', 'throttle:10,1']);
 });
 
 
