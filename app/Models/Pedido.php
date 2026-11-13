@@ -81,4 +81,11 @@ class Pedido extends Model
     {
         return $this->hasMany(DetallePedido::class, 'id_pedido');
     }
+
+        // Relación: un pedido puede tener varios pagos (un intento fallido y luego uno exitoso, por ejemplo).
+    // Uso: $pedido->pagos
+    public function pagos(): HasMany
+    {
+        return $this->hasMany(Pago::class, 'id_pedido');
+    }
 }
