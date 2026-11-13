@@ -27,6 +27,8 @@ class Tienda extends Model
 
     protected $casts = [
         'activa' => 'boolean',
+        // Convierte el 0/1 de la base en true/false.
+        'cuenta_habilitada' => 'boolean',
     ];
 
     // Relaciones
