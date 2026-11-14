@@ -108,7 +108,7 @@ class CuentasStripe
 
             throw new ErrorNegocio(
                 'STRIPE_NO_DISPONIBLE',
-                'No pudimos conectar con Stripe. Intenta de nuevo en un momento.',
+                'No pudimos conectar con el servicio de pagos. Intenta de nuevo en un momento.',
                 502,
             );
         }
