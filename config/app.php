@@ -54,6 +54,10 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Dirección del panel web (encargados y administradores). Con ella el backend arma los enlaces de
+    // regreso al panel, por ejemplo cuando Stripe termina el alta de la cuenta de una tienda (#109).
+    'panel_url' => env('PANEL_URL', 'http://localhost:5174/panel'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

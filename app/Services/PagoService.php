@@ -5,10 +5,12 @@ namespace App\Services;
 use App\Models\Pedido;
 use App\Models\Tienda;
 use App\Models\Usuario;
+use App\Services\Stripe\CuentasStripe;
+use Illuminate\Support\Facades\DB;
 
 // ESQUELETO (Sprint 04). Todo lo que habla con Stripe vive aquí: PedidoService nunca toca su API.
 // Cada método lo completa su tarea y cambia SOLO el contenido, no el nombre ni lo que regresa:
-//   crearCuentaConectada, generarLinkOnboarding, estadoCuenta → #109 (Ricardo)
+//   crearCuentaConectada, generarLinkOnboarding, estadoCuenta → #109 (Ricardo) ✓
 //   crearIntento → #61 (Alfredo). #75 (Daniel) agrega que un cobro no se repita.
 //   metodosDe, crearSetupIntent, eliminarMetodo → #65 y #188 (Alfredo)
 //   historialDe → #69 (Alfredo)
@@ -17,23 +19,69 @@ use App\Models\Usuario;
 // stripe/stripe-php lo instala #176 (José Ángel).
 class PagoService
 {
-    // #109: crea la cuenta Express de la tienda en Stripe y guarda tiendas.id_cuenta_stripe.
-    // Regresa el id de la cuenta. Si la tienda ya tiene una, regresa esa.
+    // Estados de la cuenta de la tienda que ve el encargado en "Configura tus pagos" (#147)
+    public const VERIFICADO = 'verificado';
+    public const PENDIENTE = 'pendiente';
+    public const RECHAZADO = 'rechazado';
+
+    public function __construct(private CuentasStripe $cuentas)
+    {
+    }
+
+    // #109: crea la cuenta conectada de la tienda en Stripe (ver CuentasStripe) y guarda tiendas.id_cuenta_stripe.
+    // Regresa el id de la cuenta. Si la tienda ya tiene una, regresa esa: nunca se crean dos.
     public function crearCuentaConectada(Tienda $tienda): string
     {
-        return 'acct_ejemplo';
+        // La tienda se bloquea mientras se crea: si llegan dos peticiones juntas (doble clic),
+        // la segunda espera y, al seguir, ya encuentra la cuenta que guardó la primera.
+        return DB::transaction(function () use ($tienda) {
+            $tienda = Tienda::lockForUpdate()->findOrFail($tienda->id);
+
+            if ($tienda->id_cuenta_stripe) {
+                return $tienda->id_cuenta_stripe;
+            }
+
+            $tienda->id_cuenta_stripe = $this->cuentas->crearCuenta($tienda);
+            $tienda->save();
+
+            return $tienda->id_cuenta_stripe;
+        });
     }
 
     // #109: URL temporal de Stripe donde el encargado da de alta su cuenta bancaria.
+    // Si la tienda todavía no tiene cuenta, se crea aquí. El enlace se pide cada vez (caduca en minutos).
+    // Al terminar, Stripe regresa al encargado a "Configura tus pagos"; si el enlace ya caducó, a la
+    // misma vista, donde vuelve a tocar el botón y se pide uno nuevo.
     public function generarLinkOnboarding(Tienda $tienda): string
     {
-        return 'https://connect.stripe.com/setup/ejemplo';
+        $idCuenta = $this->crearCuentaConectada($tienda);
+        $vista = rtrim(config('app.panel_url'), '/').'/pagos';
+
+        return $this->cuentas->crearEnlaceDeAlta($idCuenta, $vista, $vista);
     }
 
     // #109: "verificado", "pendiente" o "rechazado".
+    // Se le pregunta a Stripe en el momento y se guarda en tiendas.cuenta_habilitada, que es lo que revisa
+    // crear el pedido (#148). Así funciona aunque todavía no llegue el aviso de Stripe (#146).
     public function estadoCuenta(Tienda $tienda): string
     {
-        return 'pendiente';
+        // Sin cuenta todavía: falta empezar el alta. No hace falta preguntarle a Stripe.
+        if (! $tienda->id_cuenta_stripe) {
+            return self::PENDIENTE;
+        }
+
+        $cuenta = $this->cuentas->consultarCuenta($tienda->id_cuenta_stripe);
+
+        if ($tienda->cuenta_habilitada !== $cuenta['puede_cobrar']) {
+            $tienda->cuenta_habilitada = $cuenta['puede_cobrar'];
+            $tienda->save();
+        }
+
+        if ($cuenta['puede_cobrar']) {
+            return self::VERIFICADO;
+        }
+
+        return $cuenta['rechazada'] ? self::RECHAZADO : self::PENDIENTE;
     }
 
     // #61: crea el PaymentIntent DIRECTO en la cuenta de la tienda y guarda el renglón en pagos.

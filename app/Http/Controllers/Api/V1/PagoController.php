@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\ErrorNegocio;
 use App\Http\Controllers\Controller;
+use App\Models\Tienda;
 use App\Services\PagoService;
+use App\Support\Tenant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -44,17 +46,22 @@ class PagoController extends Controller
         throw new ErrorNegocio('NO_IMPLEMENTADO', 'Eliminar tarjetas todavía no está disponible.', 501);
     }
 
-    // #109 (Ricardo): POST /tienda/pagos/onboarding
-    //   { datos: { url } }
-    public function onboarding(Request $request): JsonResponse
+    // #109: POST /tienda/pagos/onboarding
+    //   { datos: { url } } → el panel abre esa URL (formulario de Stripe)
+    // La tienda sale del token (middleware tenant, #162): el cliente nunca manda id_tienda.
+    public function onboarding(Tenant $tenant): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'El alta de la cuenta todavía no está disponible.', 501);
+        $url = $this->pagos->generarLinkOnboarding(Tienda::findOrFail($tenant->idTienda));
+
+        return response()->json(['datos' => ['url' => $url]]);
     }
 
-    // #109 (Ricardo): GET /tienda/pagos/estado
+    // #109: GET /tienda/pagos/estado
     //   { datos: { estado } } con "verificado", "pendiente" o "rechazado"
-    public function estadoCuenta(Request $request): JsonResponse
+    public function estadoCuenta(Tenant $tenant): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'El estado de la cuenta todavía no está disponible.', 501);
+        $estado = $this->pagos->estadoCuenta(Tienda::findOrFail($tenant->idTienda));
+
+        return response()->json(['datos' => ['estado' => $estado]]);
     }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\CatalogoController;
 use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\EsperaController;
 use App\Http\Controllers\Api\V1\FranjaController;
+use App\Http\Controllers\Api\V1\PagoController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
 use App\Http\Controllers\Api\V1\ProductoPanelController;
@@ -146,9 +147,11 @@ Route::prefix('tienda')
         Route::get('/capacidad', [CapacidadController::class, 'obtenerCapacidad']);
         Route::put('/capacidad', [CapacidadController::class, 'actualizarCapacidad']);
 
-        // #109 (Ricardo): alta de la cuenta bancaria en Stripe y su estado.
-        // Route::post('/pagos/onboarding', [PagoController::class, 'onboarding']);
-        // Route::get('/pagos/estado', [PagoController::class, 'estadoCuenta']);
+        // #109: alta de la cuenta bancaria en Stripe y su estado ("Configura tus pagos", #147).
+        // Onboarding: máximo 10 por minuto, porque cada uno llama a la API de Stripe.
+        Route::post('/pagos/onboarding', [PagoController::class, 'onboarding'])
+            ->middleware('throttle:10,1');
+        Route::get('/pagos/estado', [PagoController::class, 'estadoCuenta']);
     });
 
 
