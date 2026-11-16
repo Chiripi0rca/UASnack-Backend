@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Documents\CatalogoDinamico;
+use App\Enums\EstadoProducto;
 use App\Exceptions\ErrorNegocio;
 use App\Jobs\EspejarProductoEnMongo;
 use App\Models\OpcionProducto;
@@ -12,11 +13,13 @@ use App\Models\Usuario;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 // Sprint 02. Cada método lo completó su tarea:
 //   productosDe      → #45
 //   calcularTotal    → #49
 //   sincronizarMongo → #165
+//   verificarStock y descontarStock → #192
 // Si una firma no te sirve, acuérdalo con los demás antes de cambiarla.
 class CatalogoService
 {
@@ -267,6 +270,139 @@ class CatalogoService
     private function aCentavos(string|float|int $importe): int
     {
         return (int) round(((float) $importe) * 100);
+    }
+
+    // #192: revisa que alcance el stock de todo el carrito, sin cambiar nada.
+    // si falta algo lanza STOCK_INSUFICIENTE (409) con los nombres de los productos.
+    // no evita vender de más: eso lo hace descontarStock().
+    public function verificarStock(array $lineas): void
+    {
+        // arma [id_producto => cantidad] con las unidades totales de cada producto
+        $pedidas = $this->cantidadesPorProducto($lineas);
+
+        // trae todos los productos del carrito en una sola consulta, indexados por id.
+        // sin scopes porque el filtro del encargado no aplica cuando consulta un alumno
+        $productos = Producto::withoutGlobalScopes()
+            ->whereIn('id', array_keys($pedidas))
+            ->get()
+            ->keyBy('id');
+
+        $faltantes = [];
+
+        foreach ($pedidas as $idProducto => $cantidad) {
+            $producto = $productos->get($idProducto);
+
+            if (! $producto) {
+                $this->noEncontrado();
+            }
+
+            // un producto marcado agotado cuenta como sin stock, aunque tenga unidades
+            if ($this->estadoDe($producto) === EstadoProducto::Agotado->value || $producto->stock_hoy < $cantidad) {
+                $faltantes[] = $producto->nombre;
+            }
+        }
+
+        // se revisa todo el carrito antes de lanzar el error para listar todo lo que falta
+        if ($faltantes !== []) {
+            $this->stockInsuficiente($faltantes);
+        }
+    }
+
+    // #192: baja stock_hoy de cada producto, dentro de la transacción de PedidoService::crear.
+    // todo o nada: si uno no alcanza lanza STOCK_INSUFICIENTE (409) y ninguno se descuenta.
+    public function descontarStock(array $lineas): void
+    {
+        $pedidas = $this->cantidadesPorProducto($lineas);
+
+        // ordena por id de menor a mayor para que dos pedidos no se queden esperándose entre sí
+        ksort($pedidas);
+
+        // asegura el todo o nada aunque se llame sin transacción abierta
+        DB::transaction(function () use ($pedidas) {
+            $sinStock = [];
+
+            foreach ($pedidas as $idProducto => $cantidad) {
+                // baja el stock solo si alcanza (where stock_hoy >= cantidad) y regresa cuántos renglones cambió.
+                // 0 renglones = no alcanzó. la base revisa y resta en un solo paso,
+                // así dos alumnos no se llevan la misma última unidad
+                $afectados = Producto::withoutGlobalScopes()
+                    ->where('id', $idProducto)
+                    ->where('stock_hoy', '>=', $cantidad)
+                    ->decrement('stock_hoy', $cantidad);
+
+                if ($afectados === 0) {
+                    $sinStock[] = $idProducto;
+                }
+            }
+
+            if ($sinStock !== []) {
+                // busca los nombres de los que no alcanzaron para el mensaje de error
+                $nombres = Producto::withoutGlobalScopes()->whereIn('id', $sinStock)->pluck('nombre')->all();
+
+                // 0 renglones también pasa si el producto no existe: en ese caso es 404
+                if (count($nombres) !== count($sinStock)) {
+                    $this->noEncontrado();
+                }
+
+                // al lanzar, la transacción se deshace y los productos que sí alcanzaron tampoco se descuentan
+                $this->stockInsuficiente($nombres);
+            }
+
+            // los productos que quedaron en 0 pasan a estado agotado
+            Producto::withoutGlobalScopes()
+                ->whereIn('id', array_keys($pedidas))
+                ->where('stock_hoy', '<=', 0)
+                ->update(['estado_producto' => EstadoProducto::Agotado->value]);
+
+            // borra la caché del catálogo de la tienda y manda la copia a mongo en cola (#165)
+            Producto::withoutGlobalScopes()
+                ->whereIn('id', array_keys($pedidas))
+                ->get()
+                ->each(fn (Producto $producto) => $this->sincronizarMongo($producto));
+        });
+    }
+
+    // arma [id_producto => cantidad] a partir del carrito, sumando las líneas del mismo producto
+    private function cantidadesPorProducto(array $lineas): array
+    {
+        if ($lineas === []) {
+            throw new ErrorNegocio('CARRITO_VACIO', 'Agrega al menos un producto.', 422);
+        }
+
+        $cantidades = [];
+
+        foreach ($lineas as $linea) {
+            $cantidad = (int) ($linea['cantidad'] ?? 0);
+
+            // menos de 1 no se acepta: restar un número negativo subiría el stock
+            if ($cantidad < 1) {
+                throw new ErrorNegocio('CANTIDAD_INVALIDA', 'La cantidad debe ser de al menos 1.', 422);
+            }
+
+            $idProducto = (int) ($linea['id_producto'] ?? 0);
+            $cantidades[$idProducto] = ($cantidades[$idProducto] ?? 0) + $cantidad;
+        }
+
+        return $cantidades;
+    }
+
+    // regresa el estado del producto como texto, venga como enum o como string
+    private function estadoDe(Producto $producto): string
+    {
+        return $producto->estado_producto instanceof \BackedEnum
+            ? $producto->estado_producto->value
+            : (string) $producto->estado_producto;
+    }
+
+    // arma el error de stock. es 409 como FRANJA_LLENA:
+    // la petición es válida, lo que cambió es el stock de la tienda
+    private function stockInsuficiente(array $nombres): never
+    {
+        throw new ErrorNegocio(
+            'STOCK_INSUFICIENTE',
+            'Ya no hay suficiente de: '.implode(', ', $nombres).'. Quítalo del pedido o baja la cantidad.',
+            409,
+        );
     }
 
     // la tarea 165: copia el producto a catalogo_dinamico (Mongo) y borra la caché de su tienda.
