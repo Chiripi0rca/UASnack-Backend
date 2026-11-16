@@ -7,6 +7,8 @@ use App\Models\Tienda;
 use App\Models\Usuario;
 use App\Services\Stripe\CuentasStripe;
 use Illuminate\Support\Facades\DB;
+use App\Services\Stripe\TarjetasStripe;
+use Stripe\PaymentMethod;
 
 // ESQUELETO (Sprint 04). Todo lo que habla con Stripe vive aquí: PedidoService nunca toca su API.
 // Cada método lo completa su tarea y cambia SOLO el contenido, no el nombre ni lo que regresa:
@@ -24,8 +26,13 @@ class PagoService
     public const PENDIENTE = 'pendiente';
     public const RECHAZADO = 'rechazado';
 
-    public function __construct(private CuentasStripe $cuentas)
-    {
+    // Laravel crea PagoService y le pasa solas estas dos clases:
+    //   $cuentas  → cuentas de Stripe de las tiendas (#109)
+    //   $tarjetas → tarjetas guardadas de los alumnos (#188)
+    public function __construct(
+        private CuentasStripe $cuentas,
+        private TarjetasStripe $tarjetas,
+    ) {
     }
 
     // #109: crea la cuenta conectada de la tienda en Stripe (ver CuentasStripe) y guarda tiendas.id_cuenta_stripe.
@@ -126,11 +133,40 @@ class PagoService
     }
 
     // #188: tarjetas guardadas del alumno, tal como las regresa GET /pagos/metodos.
+        // #188: tarjetas guardadas del alumno, tal como las regresa GET /pagos/metodos.
+    // Recibe al alumno y regresa una lista de tarjetas, cada una como { id, marca, ultimos4, vence }.
+    // El número completo de la tarjeta nunca llega a nuestro servidor: Stripe no lo da.
     public function metodosDe(Usuario $usuario): array
     {
-        return [
-            ['id' => 'pm_ejemplo', 'marca' => 'visa', 'ultimos4' => '4242', 'vence' => '12/28'],
-        ];
+        // Revisa si el alumno tiene cliente en Stripe (columna id_cliente_stripe, #108).
+        // Si está vacía, nunca ha guardado una tarjeta (el cliente lo crea la #65 con la primera).
+        if (! $usuario->id_cliente_stripe) {
+            // Regresa la lista vacía sin llamar a Stripe: no hay nada que consultar.
+            return [];
+        }
+
+        // Le pide a Stripe las tarjetas del cliente de este alumno.
+        // Si Stripe falla, TarjetasStripe ya lanza el error con el formato del proyecto.
+        $tarjetas = $this->tarjetas->tarjetasDe($usuario->id_cliente_stripe);
+
+        // array_map recorre cada tarjeta que regresó Stripe y la convierte en un arreglo
+        // con los cuatro campos del contrato. El resultado es la lista que sale en "datos".
+        return array_map(fn (PaymentMethod $metodo) => [
+            // Id de la tarjeta en Stripe (pm_…). La app lo usa para elegirla al pagar o para borrarla (#65).
+            'id' => $metodo->id,
+
+            // Marca de la tarjeta: visa, mastercard, amex…
+            'marca' => $metodo->card->brand,
+
+            // Últimos 4 dígitos, por ejemplo "4242".
+            'ultimos4' => $metodo->card->last4,
+
+            // Fecha de vencimiento. Stripe da el mes (3) y el año (2028) por separado.
+            // sprintf los junta en el texto "03/28":
+            //   %02d  escribe el número con 2 dígitos, rellenando con 0 a la izquierda (3 → "03")
+            //   % 100 se queda con los dos últimos dígitos del año (2028 → 28)
+            'vence' => sprintf('%02d/%02d', $metodo->card->exp_month, $metodo->card->exp_year % 100),
+        ], $tarjetas);
     }
 
     // #65: SetupIntent para guardar una tarjeta sin cobrar. La tarjeta la captura Stripe en la app,

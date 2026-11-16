@@ -114,7 +114,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Route::get('/pagos', [PagoController::class, 'historial']);
 
     // #188 (Alfredo): tarjetas guardadas.
-    // Route::get('/pagos/metodos', [PagoController::class, 'metodos']);
+    // Cuando llega GET /api/v1/pagos/metodos, Laravel llama al método "metodos" de PagoController.
+    // Está dentro del grupo con auth:sanctum: sin token responde 401 sin entrar al controlador.
+Route::get('/pagos/metodos', [PagoController::class, 'metodos']);
 
     // #65 (Alfredo): guardar una tarjeta (regresa client_secret) y eliminarla (204).
     // Route::post('/pagos/metodos', [PagoController::class, 'agregarMetodo']);
