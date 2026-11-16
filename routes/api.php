@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\EsperaController;
 use App\Http\Controllers\Api\V1\FranjaController;
 use App\Http\Controllers\Api\V1\PagoController;
+use App\Http\Controllers\Api\V1\StripeWebhookController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
 use App\Http\Controllers\Api\V1\ProductoPanelController;
@@ -123,8 +124,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Avisos de Stripe. Sin sesión: lo que lo protege es la firma. Sprint 04.
 
-// #146 (José Ángel): crea la ruta y verifica la firma. #62 (Ricardo) le agrega los eventos de pago.
-// Route::post('/webhooks/stripe', [StripeWebhookController::class, 'recibir']);
+// #146 crea la ruta y verifica la firma. #62 le agrega los eventos de pago.
+Route::post('/webhooks/stripe', [StripeWebhookController::class, 'recibir']);
 
 
 // Panel de tienda (encargado). Prefijo /tienda.

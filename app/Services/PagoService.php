@@ -60,6 +60,34 @@ class PagoService
         return $this->cuentas->crearEnlaceDeAlta($idCuenta, $vista, $vista);
     }
 
+    // #146: atiende un aviso de Stripe ya verificado. Lo que no conocemos se ignora (se responde 200):
+    // si se respondiera error, Stripe lo reintentaría por días sin que sirva de nada.
+    // #62 agrega aquí los eventos de pago (payment_intent.*).
+    public function manejarWebhook(array $evento): void
+    {
+        match ($evento['type'] ?? null) {
+            'account.updated' => $this->cuentaActualizada($evento['account'] ?? $evento['data']['object']['id'] ?? null),
+            default => null,
+        };
+    }
+
+    // #146: Stripe avisa que la cuenta de una tienda cambió. No nos fiamos del contenido del aviso:
+    // se vuelve a preguntar a Stripe y se guarda el resultado en tiendas.cuenta_habilitada.
+    private function cuentaActualizada(?string $idCuenta): void
+    {
+        $tienda = $idCuenta ? Tienda::where('id_cuenta_stripe', $idCuenta)->first() : null;
+        if (! $tienda) {
+            return;
+        }
+
+        $cuenta = $this->cuentas->consultarCuenta($idCuenta);
+
+        if ($tienda->cuenta_habilitada !== $cuenta['puede_cobrar']) {
+            $tienda->cuenta_habilitada = $cuenta['puede_cobrar'];
+            $tienda->save();
+        }
+    }
+
     // #109: "verificado", "pendiente" o "rechazado".
     // Se le pregunta a Stripe en el momento y se guarda en tiendas.cuenta_habilitada, que es lo que revisa
     // crear el pedido (#148). Así funciona aunque todavía no llegue el aviso de Stripe (#146).
