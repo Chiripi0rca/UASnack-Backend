@@ -26,11 +26,18 @@ class PagoController extends Controller
         throw new ErrorNegocio('NO_IMPLEMENTADO', 'El historial de pagos todavía no está disponible.', 501);
     }
 
-    // #188 (Alfredo): GET /pagos/metodos
-    //   { datos: [{ id, marca, ultimos4, vence }] }
+    // #188: GET /pagos/metodos
+    //   Responde { datos: [{ id, marca, ultimos4, vence }] }
+    // Recibe la petición HTTP ($request) y regresa una respuesta en JSON.
     public function metodos(Request $request): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Las tarjetas guardadas todavía no están disponibles.', 501);
+        // response()->json() arma una respuesta HTTP 200 y convierte el arreglo a JSON.
+        return response()->json([
+            // $request->user() es el alumno dueño del token (lo identificó auth:sanctum),
+            // así que solo se consultan SUS tarjetas, nunca las de otro alumno.
+            // metodosDe ya regresa cada tarjeta con la forma del contrato; aquí solo se mete en "datos".
+            'datos' => $this->pagos->metodosDe($request->user()),
+        ]);
     }
 
     // #65 (Alfredo): POST /pagos/metodos. La app guarda la tarjeta con este client_secret.
