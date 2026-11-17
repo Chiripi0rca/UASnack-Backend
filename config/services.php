@@ -33,6 +33,9 @@ return [
         'secret' => env('STRIPE_SECRET'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'), // firma de los webhooks
         'account_id' => env('STRIPE_ACCOUNT_ID'),         // cuenta de la plataforma
+        // Porcentaje que se queda la plataforma de cada cobro (application_fee_amount, §9.3).
+        // 0 = sin comisión. Lo lee de UASNACK_COMISION_PCT en el .env.
+        'comision_pct' => env('UASNACK_COMISION_PCT', 0),
     ],
 
     'slack' => [

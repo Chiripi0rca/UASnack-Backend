@@ -9,6 +9,10 @@ use App\Services\Stripe\CuentasStripe;
 use Illuminate\Support\Facades\DB;
 use App\Services\Stripe\TarjetasStripe;
 use Stripe\PaymentMethod;
+use App\Enums\EstadoPago;
+use App\Exceptions\ErrorNegocio;
+use App\Models\Pago;
+use App\Services\Stripe\CobrosStripe;
 
 // ESQUELETO (Sprint 04). Todo lo que habla con Stripe vive aquí: PedidoService nunca toca su API.
 // Cada método lo completa su tarea y cambia SOLO el contenido, no el nombre ni lo que regresa:
@@ -29,9 +33,11 @@ class PagoService
     // Laravel crea PagoService y le pasa solas estas dos clases:
     //   $cuentas  → cuentas de Stripe de las tiendas (#109)
     //   $tarjetas → tarjetas guardadas de los alumnos (#188)
+    //   $cobros   → cobros en la cuenta de la tienda (#61)
     public function __construct(
         private CuentasStripe $cuentas,
         private TarjetasStripe $tarjetas,
+        private CobrosStripe $cobros,
     ) {
     }
 
@@ -123,13 +129,123 @@ class PagoService
     // Lo llama PedidoService::crear (#148). Los dos primeros valores van a la app para que confirme
     // el cobro con el SDK de Stripe. Si el alumno paga con una tarjeta guardada, aquí se copia a la
     // cuenta de la tienda (la tarjeta vive en la plataforma y el cobro nace en la tienda).
-    public function crearIntento(Usuario $usuario, string $monto, Tienda $tienda, Pedido $pedido): array
-    {
+        // Moneda de todos los cobros: pesos mexicanos.
+    private const MONEDA = 'mxn';
+
+    // #61: cobra el pedido directo en la cuenta de la tienda (§9.3) y deja el pago en "pendiente".
+    // Lo llama PedidoService::crear (#148) después de guardar el pedido, en la misma transacción.
+    // $idMetodoPago: la tarjeta guardada que eligió el alumno (pm_…), o null si captura una nueva.
+    public function crearIntento(
+        Usuario $usuario,
+        string $monto,
+        Tienda $tienda,
+        Pedido $pedido,
+        ?string $idMetodoPago = null,
+    ): array {
+        // 1. La tienda debe tener su cuenta de Stripe habilitada.
+        $this->asegurarQuePuedeCobrar($tienda);
+
+        // 2. Arma el cobro: monto y comisión en centavos.
+        $centavos = $this->aCentavos($monto);
+        $comision = $this->comisionDe($centavos);
+        $datos = $this->datosDelCobro($pedido, $centavos, $comision);
+
+        // 3. Con tarjeta guardada, se pega al cobro una copia de ella en la cuenta de la tienda.
+        if ($idMetodoPago) {
+            $datos['payment_method'] = $this->tarjetaEnLaTienda($usuario, $idMetodoPago, $tienda);
+        }
+
+        // 4. Crea el cobro en Stripe y guarda el pago "pendiente" (el webhook de #62 lo confirma).
+        $intento = $this->cobros->crearIntento($datos, $tienda->id_cuenta_stripe);
+        $this->registrarPago($pedido, $intento['id'], $monto, $comision);
+
+        // 5. Lo que necesita la app para confirmar el cobro con el SDK de Stripe.
         return [
-            'client_secret' => 'pi_ejemplo_secret_ejemplo',
-            'stripe_account' => 'acct_ejemplo',
-            'id_payment_intent' => 'pi_ejemplo',
+            'client_secret' => $intento['client_secret'],
+            'stripe_account' => $tienda->id_cuenta_stripe,
+            'id_payment_intent' => $intento['id'],
         ];
+    }
+
+    // Sin cuenta de Stripe habilitada, la tienda no puede cobrar (§9.2).
+    // #148 ya lo revisa; esto es una segunda capa por si alguien llama crearIntento desde otro lado.
+    private function asegurarQuePuedeCobrar(Tienda $tienda): void
+    {
+        if (! $tienda->id_cuenta_stripe || ! $tienda->cuenta_habilitada) {
+            throw new ErrorNegocio('TIENDA_SIN_PAGOS', 'Esta tienda todavía no puede recibir pagos.', 409);
+        }
+    }
+
+    // Stripe cobra en centavos y sin decimales: "85.00" → 8500.
+    // round() evita que un 84.9999… termine en 8499.
+    private function aCentavos(string $monto): int
+    {
+        return (int) round((float) $monto * 100);
+    }
+
+    // La comisión de la plataforma en centavos, con el porcentaje de UASNACK_COMISION_PCT.
+    // Con 5 %: de 8500 salen 425 (4.25 pesos).
+    private function comisionDe(int $centavos): int
+    {
+        return (int) round($centavos * (float) config('services.stripe.comision_pct') / 100);
+    }
+
+    // Lo que se le manda a Stripe para crear el cobro.
+    private function datosDelCobro(Pedido $pedido, int $centavos, int $comision): array
+    {
+        $datos = [
+            'amount' => $centavos,                // cuánto cobrar, en centavos
+            'currency' => self::MONEDA,           // pesos mexicanos
+            'payment_method_types' => ['card'],   // solo tarjeta (§9)
+            'metadata' => [                       // datos nuestros: regresan en el webhook (#62)
+                'id_pedido' => (string) $pedido->id,
+                'codigo_pedido' => $pedido->codigo_pedido,
+            ],
+        ];
+
+        // Con 0 % de comisión no se aparta nada para la plataforma.
+        if ($comision > 0) {
+            $datos['application_fee_amount'] = $comision;
+        }
+
+        return $datos;
+    }
+
+    // Revisa que la tarjeta sea del alumno y la copia a la cuenta de la tienda.
+    // Regresa el id de la copia, que es el que se pega al cobro.
+    private function tarjetaEnLaTienda(Usuario $usuario, string $idMetodoPago, Tienda $tienda): string
+    {
+        // Una tarjeta ajena responde 404, igual que cualquier cosa de otro: nadie cobra con la tarjeta de otro.
+        if (! $this->esTarjetaDe($usuario, $idMetodoPago)) {
+            throw new ErrorNegocio('NO_ENCONTRADO', 'No encontramos esa tarjeta entre las que tienes guardadas.', 404);
+        }
+
+        return $this->cobros->copiarTarjeta($usuario->id_cliente_stripe, $idMetodoPago, $tienda->id_cuenta_stripe);
+    }
+
+    // ¿Está esta tarjeta entre las guardadas del alumno? (las mismas de GET /pagos/metodos, #188)
+    private function esTarjetaDe(Usuario $usuario, string $idMetodoPago): bool
+    {
+        // Sin cliente en Stripe, el alumno no tiene ninguna tarjeta guardada.
+        if (! $usuario->id_cliente_stripe) {
+            return false;
+        }
+
+        // collect()->contains revisa si alguna de sus tarjetas tiene ese id.
+        return collect($this->tarjetas->tarjetasDe($usuario->id_cliente_stripe))
+            ->contains(fn (PaymentMethod $metodo) => $metodo->id === $idMetodoPago);
+    }
+
+    // Guarda el renglón en pagos. Nace "pendiente": el webhook (#62) lo pasa a "pagado" o "fallido".
+    private function registrarPago(Pedido $pedido, string $idPaymentIntent, string $monto, int $comision): void
+    {
+        Pago::create([
+            'id_pedido' => $pedido->id,
+            'id_payment_intent' => $idPaymentIntent,
+            'monto' => $monto,
+            'comision_plataforma' => $comision / 100,   // de centavos a pesos: 425 → 4.25
+            'estado' => EstadoPago::Pendiente,
+        ]);
     }
 
     // #188: tarjetas guardadas del alumno, tal como las regresa GET /pagos/metodos.
