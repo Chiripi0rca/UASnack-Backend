@@ -76,12 +76,32 @@ class PagoService
     // #146: atiende un aviso de Stripe ya verificado. Lo que no conocemos se ignora (se responde 200):
     // si se respondiera error, Stripe lo reintentaría por días sin que sirva de nada.
     // #62 agrega aquí los eventos de pago (payment_intent.*).
+    //
+    // #77: un evento (por su id) se procesa una sola vez. Se anota y se atiende en la misma transacción:
+    // si algo falla, la anotación se deshace y el reintento de Stripe sí lo procesa.
     public function manejarWebhook(array $evento): void
     {
-        match ($evento['type'] ?? null) {
-            'account.updated' => $this->cuentaActualizada($evento['account'] ?? $evento['data']['object']['id'] ?? null),
-            default => null,
-        };
+        DB::transaction(function () use ($evento) {
+            if (! $this->anotarEvento($evento)) {
+                return;
+            }
+
+            match ($evento['type'] ?? null) {
+                'account.updated' => $this->cuentaActualizada($evento['account'] ?? $evento['data']['object']['id'] ?? null),
+                default => null,
+            };
+        });
+    }
+
+    // #77: true si el evento es nuevo, false si ya estaba anotado.
+    // insertOrIgnore no lanza error al repetirse la llave (no daña la transacción) y regresa 0 renglones.
+    // Si dos avisos iguales llegan a la vez, el segundo espera al primero y luego ve que ya existe.
+    private function anotarEvento(array $evento): bool
+    {
+        return DB::table('eventos_stripe')->insertOrIgnore([
+            'id_evento' => $evento['id'],
+            'tipo' => $evento['type'] ?? 'desconocido',
+        ]) === 1;
     }
 
     // #146: Stripe avisa que la cuenta de una tienda cambió. No nos fiamos del contenido del aviso:
