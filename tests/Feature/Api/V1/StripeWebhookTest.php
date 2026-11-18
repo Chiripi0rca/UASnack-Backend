@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Exceptions\ErrorNegocio;
 use App\Models\Facultades;
 use App\Models\Rol;
 use App\Models\Tienda;
@@ -9,6 +10,7 @@ use App\Models\Usuario;
 use App\Services\Stripe\CuentasStripe;
 use Database\Seeders\JerarquiaInstitucionalSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Mockery\MockInterface;
 use Tests\TestCase;
@@ -116,6 +118,58 @@ class StripeWebhookTest extends TestCase
         $this->assertFalse((bool) $this->tienda->fresh()->cuenta_habilitada);
     }
 
+    // --- #77: un evento se procesa una sola vez ---
+
+    public function test_el_mismo_evento_dos_veces_se_procesa_una_sola_vez(): void
+    {
+        // once(): si el segundo aviso se procesara, Mockery fallaría por llamar consultarCuenta dos veces
+        $this->simularStripe('acct_123', true);
+
+        $this->avisar('account.updated', 'acct_123', 'evt_repetido')->assertOk();
+        $this->avisar('account.updated', 'acct_123', 'evt_repetido')->assertOk();
+
+        $this->assertSame(1, DB::table('eventos_stripe')->where('id_evento', 'evt_repetido')->count());
+    }
+
+    public function test_eventos_distintos_se_procesan_cada_uno(): void
+    {
+        $this->mock(CuentasStripe::class, function (MockInterface $m) {
+            $m->shouldReceive('consultarCuenta')
+                ->twice()
+                ->andReturn(['puede_cobrar' => true, 'rechazada' => false]);
+        });
+
+        $this->avisar('account.updated', 'acct_123', 'evt_uno')->assertOk();
+        $this->avisar('account.updated', 'acct_123', 'evt_dos')->assertOk();
+
+        $this->assertSame(2, DB::table('eventos_stripe')->count());
+    }
+
+    public function test_si_falla_al_procesar_el_evento_no_queda_anotado_y_el_reintento_funciona(): void
+    {
+        $this->mock(CuentasStripe::class, function (MockInterface $m) {
+            $m->shouldReceive('consultarCuenta')
+                ->once()
+                ->andThrow(new ErrorNegocio('STRIPE_NO_DISPONIBLE', 'Stripe no responde.', 502));
+            $m->shouldReceive('consultarCuenta')
+                ->once()
+                ->andReturn(['puede_cobrar' => true, 'rechazada' => false]);
+        });
+
+        $this->avisar('account.updated', 'acct_123', 'evt_reintento')->assertStatus(502);
+        $this->assertSame(0, DB::table('eventos_stripe')->count());
+
+        $this->avisar('account.updated', 'acct_123', 'evt_reintento')->assertOk();
+        $this->assertTrue($this->tienda->fresh()->cuenta_habilitada);
+    }
+
+    public function test_un_evento_desconocido_tambien_se_anota_para_no_repetirse(): void
+    {
+        $this->avisar('customer.created', 'acct_123', 'evt_raro')->assertOk();
+
+        $this->assertDatabaseHas('eventos_stripe', ['id_evento' => 'evt_raro', 'tipo' => 'customer.created']);
+    }
+
     // --- Ayudas ---
 
     private function simularStripe(string $idCuenta, bool $puedeCobrar): void
@@ -128,10 +182,10 @@ class StripeWebhookTest extends TestCase
         });
     }
 
-    private function cuerpo(string $tipo, string $idCuenta): string
+    private function cuerpo(string $tipo, string $idCuenta, ?string $idEvento = null): string
     {
         return json_encode([
-            'id' => 'evt_'.uniqid(),
+            'id' => $idEvento ?? 'evt_'.uniqid(),
             'object' => 'event',
             'type' => $tipo,
             'account' => $idCuenta,
@@ -155,9 +209,9 @@ class StripeWebhookTest extends TestCase
         ], $cuerpo);
     }
 
-    private function avisar(string $tipo, string $idCuenta)
+    private function avisar(string $tipo, string $idCuenta, ?string $idEvento = null)
     {
-        $cuerpo = $this->cuerpo($tipo, $idCuenta);
+        $cuerpo = $this->cuerpo($tipo, $idCuenta, $idEvento);
 
         return $this->enviar($cuerpo, $this->firma($cuerpo));
     }
