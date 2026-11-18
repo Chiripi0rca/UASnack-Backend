@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Exceptions\ErrorNegocio;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CrearPedidoRequest;
+use App\Http\Resources\PedidoResource;
 use App\Services\PedidoService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
-// ESQUELETO (Sprint 04). Pedidos del alumno. Lo completa #148 (José Ángel).
+// Pedidos del alumno.
 class PedidoController extends Controller
 {
     public function __construct(private PedidoService $pedidos)
@@ -19,8 +19,18 @@ class PedidoController extends Controller
     //   Envía:  { id_tienda, modo_retiro, franja, lineas: [{ id_producto, cantidad, extras, quitables }] }
     //   Regresa: { datos: { codigo_pedido, estado, total, franja_inicio, franja_fin,
     //                       pago: { client_secret, stripe_account } } }
-    public function crear(Request $request): JsonResponse
+    public function crear(CrearPedidoRequest $request): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Crear el pedido todavía no está disponible.', 501);
+        $datos = $request->validated();
+        $pedido = $this->pedidos->crear(
+            $request->user(),
+            $datos['id_tienda'],
+            $datos['lineas'],
+            $datos['modo_retiro'],
+            $request->franja(),
+            $request->attributes->get('clave_idempotencia'),
+        );
+
+        return response()->json(['datos' => new PedidoResource($pedido)], $pedido->wasRecentlyCreated ? 201 : 200);
     }
 }
