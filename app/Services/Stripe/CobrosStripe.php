@@ -53,6 +53,20 @@ class CobrosStripe
         return ['id' => $intento->id, 'client_secret' => $intento->client_secret];
     }
 
+    // Vuelve a pedir un cobro ya creado (#148). Se usa cuando la app repite POST /pedidos con la misma
+    // clave: el client_secret no se guarda en nuestra base, así que se le pregunta a Stripe.
+    // Regresa lo mismo que crearIntento.
+    public function obtenerIntento(string $idIntento, string $idCuenta): array
+    {
+        $intento = $this->llamar(fn (StripeClient $stripe) => $stripe->paymentIntents->retrieve(
+            $idIntento,
+            [],
+            ['stripe_account' => $idCuenta],
+        ));
+
+        return ['id' => $intento->id, 'client_secret' => $intento->client_secret];
+    }
+
     // Hace la llamada a Stripe y convierte cualquier falla en el error del proyecto.
     // Es una copia del llamar() de CuentasStripe y TarjetasStripe: la app recibe los mismos códigos
     // de error venga de donde venga la falla.

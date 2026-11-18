@@ -187,6 +187,27 @@ class PagoService
         ];
     }
 
+    // #148: los datos para pagar un pedido que ya tiene su cobro creado. Solo aplica si la app repite
+    // POST /pedidos con la misma clave: no se crea otro cobro, se regresa el mismo.
+    // null si el pedido no tiene cobro todavía.
+    public function reanudarCobro(Pedido $pedido): ?array
+    {
+        $pago = $pedido->pagos()->latest('id')->first();
+        $idCuenta = $pedido->tienda?->id_cuenta_stripe;
+
+        if (! $pago || ! $idCuenta) {
+            return null;
+        }
+
+        $intento = $this->cobros->obtenerIntento($pago->id_payment_intent, $idCuenta);
+
+        return [
+            'client_secret' => $intento['client_secret'],
+            'stripe_account' => $idCuenta,
+            'id_payment_intent' => $pago->id_payment_intent,
+        ];
+    }
+
     // Sin cuenta de Stripe habilitada, la tienda no puede cobrar (§9.2).
     // #148 ya lo revisa; esto es una segunda capa por si alguien llama crearIntento desde otro lado.
     private function asegurarQuePuedeCobrar(Tienda $tienda): void

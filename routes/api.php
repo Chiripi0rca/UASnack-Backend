@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\FacultadController;
 use App\Http\Controllers\Api\V1\EsperaController;
 use App\Http\Controllers\Api\V1\FranjaController;
 use App\Http\Controllers\Api\V1\PagoController;
+use App\Http\Controllers\Api\V1\PedidoController;
 use App\Http\Controllers\Api\V1\StripeWebhookController;
 use App\Http\Controllers\Api\V1\TiendaController;
 use App\Http\Controllers\Api\V1\TiendaAdminController;
@@ -102,8 +103,8 @@ Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
     // #148 (José Ángel): POST /pedidos con el header Idempotency-Key. La forma del JSON está en el
     // documento de turnos del Sprint 04.
     // "idempotencia" (#74) exige el header con un UUID y lo deja en $request->attributes->get('clave_idempotencia').
-    // Route::post('/pedidos', [PedidoController::class, 'crear'])
-    //     ->middleware(['idempotencia', 'throttle:10,1']);
+    Route::post('/pedidos', [PedidoController::class, 'crear'])
+        ->middleware(['idempotencia', 'throttle:10,1']);
 });
 
 

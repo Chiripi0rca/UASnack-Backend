@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Enums\EstadoPedido;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Pedido;
+use App\Models\Producto;
+use App\Models\Tienda;
 use App\Models\Usuario;
 use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -14,20 +16,25 @@ use Illuminate\Support\Facades\DB;
 // Pedidos del alumno: cada método es un paso de la máquina de estados (§6 del documento general).
 //   voySaliendo → #58 (Alfredo). Mete a cocina un pedido "en espera" (§7.3).
 // ESQUELETO (Sprint 04). Los completa su tarea y cambia SOLO el contenido:
-//   crear → #148 (José Ángel), con el stock de #192
+//   crear → #148 (José Ángel) ✓, con el stock de #192
 //   pedidoPorClave y sinRepetirClave → #74 (Ricardo) ✓
 //   marcarPagado → #62 (Ricardo)
 class PedidoService
 {
-    // Laravel crea CapacidadService y lo pasa aquí solo (inyección de dependencias).
-    // Se usa para calcular el tiempo de espera en el momento en que el pedido entra a cocina.
-    public function __construct(private CapacidadService $capacidad)
-    {
+    // Laravel crea estos servicios y los pasa aquí solo (inyección de dependencias).
+    //   $capacidad → franjas, cupo de cocina y tiempo de espera
+    //   $catalogo  → stock y total calculado en el servidor
+    //   $pagos     → el cobro: PedidoService nunca toca la API de Stripe
+    public function __construct(
+        private CapacidadService $capacidad,
+        private CatalogoService $catalogo,
+        private PagoService $pagos,
+    ) {
     }
 
-    // #148: crea el pedido en PENDIENTE_PAGO. En orden, dentro de una transacción:
-    // clave repetida (pedidoPorClave) → tienda con cuenta_habilitada → stock → total → reservar → cobrar
-    // (PagoService::crearIntento) → guardar. En reparto_cocina se guarda lo que regresa reservar().
+    // #148: crea el pedido en PENDIENTE_PAGO y su cobro. Los datos de pago van en $pedido->pago.
+    // Con una clave repetida regresa el pedido que ya existe (wasRecentlyCreated = false), sin tocar
+    // stock ni cupo y sin cobrar otra vez.
     // $franja es la hora de RECOGER; null en modo "voy saliendo", que no reserva cocina.
     public function crear(
         Usuario $usuario,
@@ -37,7 +44,139 @@ class PedidoService
         ?Carbon $franja,
         string $claveIdem,
     ): Pedido {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Crear el pedido todavía no está disponible.', 501);
+        $pedido = $this->pedidoPorClave($claveIdem, $usuario)
+            ?? $this->sinRepetirClave(
+                $claveIdem,
+                $usuario,
+                fn () => $this->crearNuevo($usuario, $idTienda, $lineas, $modoRetiro, $franja, $claveIdem),
+            );
+
+        return $pedido->wasRecentlyCreated ? $pedido : $this->conDatosDePago($pedido);
+    }
+
+    // Todo lo de un pedido nuevo. Primero se revisa sin cambiar nada (tienda, stock, total, hora);
+    // luego, en una transacción: stock → cupo → pedido → cobro. Si algo falla, no queda nada a medias.
+    private function crearNuevo(
+        Usuario $usuario,
+        int $idTienda,
+        array $lineas,
+        string $modoRetiro,
+        ?Carbon $franja,
+        string $claveIdem,
+    ): Pedido {
+        $tienda = $this->catalogo->tiendaActiva($idTienda); // 404 si no existe o está de baja
+
+        if (! $tienda->cuenta_habilitada) {
+            throw new ErrorNegocio('TIENDA_SIN_PAGOS', 'Esta tienda todavía no puede recibir pagos.', 409);
+        }
+
+        $this->catalogo->verificarStock($lineas);
+
+        // el total sale del servidor; cualquier precio que mande la app se ignora
+        $calculo = $this->catalogo->calcularTotal($lineas, $franja);
+        if ((int) $calculo['lineas'][0]['id_tienda'] !== $tienda->id) {
+            throw new ErrorNegocio('VARIAS_TIENDAS', 'Un pedido solo puede tener productos de una tienda.', 422);
+        }
+
+        $minutos = $this->minutosDeCocina($lineas);
+        $franja = $this->validarRetiro($tienda, $modoRetiro, $franja, $minutos);
+
+        return DB::transaction(function () use ($usuario, $tienda, $calculo, $modoRetiro, $franja, $minutos, $claveIdem, $lineas) {
+            $this->catalogo->descontarStock($lineas);
+
+            // lo que regresa reservar() (en qué franjas se apartó la cocina) se guarda para poder liberarlo
+            $reparto = $franja ? $this->capacidad->reservar($tienda, $franja, $minutos) : [];
+
+            $pedido = Pedido::create([
+                'codigo_pedido' => $this->nuevoCodigo(),
+                'clave_idempotencia' => $claveIdem,
+                'id_usuario' => $usuario->id,
+                'id_tienda' => $tienda->id,
+                'estado' => EstadoPedido::PendientePago,
+                'modo_retiro' => $modoRetiro,
+                'total' => $calculo['total'],
+                'minutos_cocina' => $minutos,
+                'franja_inicio' => $franja?->format('Y-m-d H:i:s'),
+                'franja_fin' => $franja?->copy()->addMinutes((int) $tienda->duracion_franja_min)->format('Y-m-d H:i:s'),
+                'reparto_cocina' => $reparto,
+                'pin_retiro' => str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT),
+            ]);
+
+            foreach ($calculo['lineas'] as $linea) {
+                $pedido->detalle()->create([
+                    'id_producto' => $linea['id_producto'],
+                    'cantidad' => $linea['cantidad'],
+                    'precio_unitario' => $linea['precio_unitario'],
+                    'descuento_aplicado' => $linea['descuento_aplicado'],
+                    'subtotal' => $linea['subtotal'],
+                    'extras' => $linea['extras'],
+                    'quitables' => $linea['quitables'],
+                ]);
+            }
+
+            // el cobro va al final: si Stripe falla se deshace todo lo de arriba
+            $monto = number_format($calculo['total'], 2, '.', '');
+            $pedido->setRelation('pago', $this->pagos->crearIntento($usuario, $monto, $tienda, $pedido));
+
+            return $pedido;
+        });
+    }
+
+    // minutos de cocina del carrito: tiempo_prep_min × cantidad de cada producto
+    private function minutosDeCocina(array $lineas): int
+    {
+        $tiempos = Producto::withoutGlobalScopes()
+            ->whereIn('id', array_column($lineas, 'id_producto'))
+            ->pluck('tiempo_prep_min', 'id');
+
+        return (int) collect($lineas)->sum(fn (array $l) => $tiempos[$l['id_producto']] * $l['cantidad']);
+    }
+
+    // Revisa la hora elegida. Regresa la franja a reservar, o null en "voy saliendo".
+    // La hora tiene que ser una de las que la tienda ofrece hoy para este pedido (no vale inventarla).
+    private function validarRetiro(Tienda $tienda, string $modoRetiro, ?Carbon $franja, int $minutos): ?Carbon
+    {
+        if ($modoRetiro === Pedido::RETIRO_VOY_SALIENDO) {
+            if (! $this->capacidad->estimarEspera($tienda, $minutos)['voy_saliendo_disponible']) {
+                throw new ErrorNegocio('VOY_SALIENDO_NO_DISPONIBLE', 'Ahora no se puede pedir con "voy saliendo". Elige una hora.', 409);
+            }
+
+            return null;
+        }
+
+        $ofrecidas = $this->capacidad->franjasDisponibles($tienda, now(CapacidadService::ZONA_HORARIA), $minutos, 100);
+        $elegida = $franja ? $ofrecidas->first(
+            fn (array $f) => $f['fecha'] === $franja->format('Y-m-d') && $f['inicio'] === $franja->format('H:i')
+        ) : null;
+
+        if (! $elegida || ! $elegida['disponible']) {
+            throw new ErrorNegocio('FRANJA_LLENA', 'Esa hora ya se llenó. Elige otra.', 409);
+        }
+
+        return $franja;
+    }
+
+    // folio visible (TA-2451). Es único en toda la tabla; si ya se usó, se prueba otro.
+    // Pasados 20 intentos usa 6 dígitos, para no quedarse dando vueltas si los de 4 se acaban.
+    private function nuevoCodigo(): string
+    {
+        for ($intento = 0; ; $intento++) {
+            $codigo = 'TA-'.($intento < 20 ? random_int(1000, 9999) : random_int(100000, 999999));
+
+            if (! Pedido::withoutGlobalScopes()->where('codigo_pedido', $codigo)->exists()) {
+                return $codigo;
+            }
+        }
+    }
+
+    // clave repetida con el pago aún pendiente: la app necesita el client_secret para seguir pagando
+    private function conDatosDePago(Pedido $pedido): Pedido
+    {
+        if ($pedido->estado === EstadoPedido::PendientePago) {
+            $pedido->setRelation('pago', $this->pagos->reanudarCobro($pedido));
+        }
+
+        return $pedido;
     }
 
     // #74: el pedido que ya se creó con esta clave, o null si la clave es nueva.
