@@ -40,17 +40,21 @@ class PagoController extends Controller
         ]);
     }
 
-    // #65 (Alfredo): POST /pagos/metodos. La app guarda la tarjeta con este client_secret.
-    //   { datos: { client_secret } }
+    // #65: POST /pagos/metodos → { datos: { client_secret } }
+    // La app usa ese client_secret para que Stripe capture y guarde la tarjeta.
     public function agregarMetodo(Request $request): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Guardar tarjetas todavía no está disponible.', 501);
+        return response()->json([
+            'datos' => ['client_secret' => $this->pagos->crearSetupIntent($request->user())],
+        ]);
     }
 
-    // #65 (Alfredo): DELETE /pagos/metodos/{id}. Responde 204.
+    // #65: DELETE /pagos/metodos/{id} → 204 (sin cuerpo). Si la tarjeta no es suya, 404.
     public function eliminarMetodo(Request $request, string $id): Response
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'Eliminar tarjetas todavía no está disponible.', 501);
+        $this->pagos->eliminarMetodo($request->user(), $id);
+
+        return response()->noContent();
     }
 
     // #109: POST /tienda/pagos/onboarding
