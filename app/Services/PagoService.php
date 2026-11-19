@@ -145,7 +145,6 @@ class PagoService
         return $cuenta['rechazada'] ? self::RECHAZADO : self::PENDIENTE;
     }
 
-    // #61: crea el PaymentIntent DIRECTO en la cuenta de la tienda y guarda el renglón en pagos.
     // Lo llama PedidoService::crear (#148). Los dos primeros valores van a la app para que confirme
     // el cobro con el SDK de Stripe. Si el alumno paga con una tarjeta guardada, aquí se copia a la
     // cuenta de la tienda (la tarjeta vive en la plataforma y el cobro nace en la tienda).
@@ -256,12 +255,18 @@ class PagoService
     // Regresa el id de la copia, que es el que se pega al cobro.
     private function tarjetaEnLaTienda(Usuario $usuario, string $idMetodoPago, Tienda $tienda): string
     {
-        // Una tarjeta ajena responde 404, igual que cualquier cosa de otro: nadie cobra con la tarjeta de otro.
+        $this->asegurarQueEsSuya($usuario, $idMetodoPago);
+
+        return $this->cobros->copiarTarjeta($usuario->id_cliente_stripe, $idMetodoPago, $tienda->id_cuenta_stripe);
+    }
+
+    // Una tarjeta ajena responde 404, igual que cualquier cosa de otro (#61 y #65):
+    // nadie cobra ni borra con la tarjeta de otro alumno.
+    private function asegurarQueEsSuya(Usuario $usuario, string $idMetodoPago): void
+    {
         if (! $this->esTarjetaDe($usuario, $idMetodoPago)) {
             throw new ErrorNegocio('NO_ENCONTRADO', 'No encontramos esa tarjeta entre las que tienes guardadas.', 404);
         }
-
-        return $this->cobros->copiarTarjeta($usuario->id_cliente_stripe, $idMetodoPago, $tienda->id_cuenta_stripe);
     }
 
     // ¿Está esta tarjeta entre las guardadas del alumno? (las mismas de GET /pagos/metodos, #188)
@@ -290,7 +295,6 @@ class PagoService
     }
 
     // #188: tarjetas guardadas del alumno, tal como las regresa GET /pagos/metodos.
-        // #188: tarjetas guardadas del alumno, tal como las regresa GET /pagos/metodos.
     // Recibe al alumno y regresa una lista de tarjetas, cada una como { id, marca, ultimos4, vence }.
     // El número completo de la tarjeta nunca llega a nuestro servidor: Stripe no lo da.
     public function metodosDe(Usuario $usuario): array
@@ -326,16 +330,40 @@ class PagoService
         ], $tarjetas);
     }
 
-    // #65: SetupIntent para guardar una tarjeta sin cobrar. La tarjeta la captura Stripe en la app,
-    // nunca pasa por nuestro servidor. Regresa el client_secret.
+        // #65: prepara el guardado de una tarjeta y regresa el client_secret que la app le pasa al SDK de Stripe.
+    // La tarjeta la captura Stripe en la app: nunca pasa por nuestro servidor.
     public function crearSetupIntent(Usuario $usuario): string
     {
-        return 'seti_ejemplo_secret_ejemplo';
+        return $this->tarjetas->crearSetupIntent($this->clienteDe($usuario));
     }
 
-    // #65: quita una tarjeta guardada del alumno.
+    // #65: quita una tarjeta guardada del alumno. Solo puede quitar las suyas.
     public function eliminarMetodo(Usuario $usuario, string $idMetodo): void
     {
+        $this->asegurarQueEsSuya($usuario, $idMetodo);
+        $this->tarjetas->quitarTarjeta($idMetodo);
+    }
+
+    // El cliente de Stripe del alumno (cus_…). La primera vez lo crea y lo guarda en usuarios.id_cliente_stripe.
+    private function clienteDe(Usuario $usuario): string
+    {
+        // Ya tiene uno: se usa ese.
+        if ($usuario->id_cliente_stripe) {
+            return $usuario->id_cliente_stripe;
+        }
+
+        // Bloquea al alumno mientras se crea: si llegan dos peticiones juntas, la segunda espera
+        // y encuentra el cliente que guardó la primera (igual que crearCuentaConectada, #109).
+        return DB::transaction(function () use ($usuario) {
+            $alumno = Usuario::lockForUpdate()->findOrFail($usuario->id);
+
+            if (! $alumno->id_cliente_stripe) {
+                // forceFill porque id_cliente_stripe no está en $fillable (nunca viene de la app).
+                $alumno->forceFill(['id_cliente_stripe' => $this->tarjetas->crearCliente($alumno)])->save();
+            }
+
+            return $alumno->id_cliente_stripe;
+        });
     }
 
     // #69: pagos y reembolsos del alumno, los más nuevos primero. Lo paginado lo decide esta tarea.

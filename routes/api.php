@@ -119,9 +119,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Está dentro del grupo con auth:sanctum: sin token responde 401 sin entrar al controlador.
 Route::get('/pagos/metodos', [PagoController::class, 'metodos']);
 
-    // #65 (Alfredo): guardar una tarjeta (regresa client_secret) y eliminarla (204).
-    // Route::post('/pagos/metodos', [PagoController::class, 'agregarMetodo']);
-    // Route::delete('/pagos/metodos/{id}', [PagoController::class, 'eliminarMetodo']);
+
+    // #65 (Alfredo): guardar una tarjeta (regresa client_secret) y quitarla (204).
+    // Guardar: máximo 10 por minuto, porque cada una crea cosas en Stripe.
+    Route::post('/pagos/metodos', [PagoController::class, 'agregarMetodo'])
+        ->middleware('throttle:10,1');
+    Route::delete('/pagos/metodos/{id}', [PagoController::class, 'eliminarMetodo']);
 });
 
 
