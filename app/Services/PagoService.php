@@ -75,7 +75,7 @@ class PagoService
 
     // #146: atiende un aviso de Stripe ya verificado. Lo que no conocemos se ignora (se responde 200):
     // si se respondiera error, Stripe lo reintentaría por días sin que sirva de nada.
-    // #62 agrega aquí los eventos de pago (payment_intent.*).
+    // #62: los eventos de pago, payment_intent.succeeded y payment_intent.payment_failed.
     //
     // #77: un evento (por su id) se procesa una sola vez. Se anota y se atiende en la misma transacción:
     // si algo falla, la anotación se deshace y el reintento de Stripe sí lo procesa.
@@ -88,9 +88,63 @@ class PagoService
 
             match ($evento['type'] ?? null) {
                 'account.updated' => $this->cuentaActualizada($evento['account'] ?? $evento['data']['object']['id'] ?? null),
+                'payment_intent.succeeded' => $this->cobroConfirmado($evento['data']['object'] ?? []),
+                'payment_intent.payment_failed' => $this->cobroFallido($evento['data']['object'] ?? []),
                 default => null,
             };
         });
+    }
+
+    // #62: Stripe cobró la tarjeta (payment_intent.succeeded). El pago queda "pagado" y el pedido avanza.
+    // El cobro se busca por id_payment_intent (UNIQUE en pagos): un aviso de un cobro que no es nuestro
+    // se ignora. No nos fiamos del todo del aviso: si el monto cobrado no es el del pago, no se toca nada
+    // y queda en el log para revisarlo (lo concilia #180).
+    private function cobroConfirmado(array $intento): void
+    {
+        $pago = $this->pagoDelIntento($intento);
+        if (! $pago || $pago->estado === EstadoPago::Pagado) {
+            return;
+        }
+
+        $cobrado = (int) ($intento['amount_received'] ?? 0);
+        if ($cobrado !== $this->aCentavos((string) $pago->monto)) {
+            report(new \RuntimeException(
+                "Pago {$pago->id}: Stripe avisó un cobro de {$cobrado} centavos y se esperaban {$pago->monto} pesos."
+            ));
+
+            return;
+        }
+
+        $pago->estado = EstadoPago::Pagado;
+        $pago->id_charge = $intento['latest_charge'] ?? $pago->id_charge;
+        $pago->save();
+
+        // Se pide aquí y no en el constructor: PedidoService ya recibe a PagoService en el suyo,
+        // y pedirse los dos al construirse sería un ciclo.
+        app(PedidoService::class)->marcarPagado($pago->pedido);
+    }
+
+    // #62: la tarjeta fue rechazada (payment_intent.payment_failed). El pago queda "fallido" y el pedido
+    // sigue en PENDIENTE_PAGO: no se confirma (HU-07, CA-02). El alumno puede intentar con otra tarjeta
+    // sobre el mismo cobro; si después sale bien, llega payment_intent.succeeded y se marca pagado.
+    // Si nunca paga, el pedido lo limpia #180 y devuelve su stock y su cupo.
+    private function cobroFallido(array $intento): void
+    {
+        $pago = $this->pagoDelIntento($intento);
+        if (! $pago || $pago->estado !== EstadoPago::Pendiente) {
+            return;
+        }
+
+        $pago->estado = EstadoPago::Fallido;
+        $pago->save();
+    }
+
+    // El renglón de pagos de ese cobro, bloqueado hasta que termine la transacción del webhook.
+    private function pagoDelIntento(array $intento): ?Pago
+    {
+        $id = $intento['id'] ?? null;
+
+        return $id ? Pago::where('id_payment_intent', $id)->lockForUpdate()->first() : null;
     }
 
     // #77: true si el evento es nuevo, false si ya estaba anotado.

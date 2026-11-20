@@ -221,9 +221,29 @@ class PedidoService
 
     // #62: Stripe confirmó el cobro. Pasa a PAGADO, o a EN_ESPERA en modo "voy saliendo" (§7.3).
     // Nunca se llama desde crear(): el pago solo se da por hecho cuando llega el aviso de Stripe.
+    // Solo cambia un pedido que sigue en PENDIENTE_PAGO. Si ya avanzó (otro aviso llegó antes) o se
+    // canceló, no lo toca: así un aviso repetido nunca mueve el pedido dos veces.
     public function marcarPagado(Pedido $pedido): Pedido
     {
-        return $pedido;
+        return DB::transaction(function () use ($pedido) {
+            // Bloqueado hasta terminar: si llegan dos avisos a la vez, el segundo ya lo ve pagado.
+            $pedido = Pedido::withoutGlobalScopes()->lockForUpdate()->findOrFail($pedido->id);
+
+            if ($pedido->estado !== EstadoPedido::PendientePago) {
+                return $pedido;
+            }
+
+            // "Voy saliendo" se paga y espera, sin entrar a cocina hasta que el alumno avisa (§7.3).
+            // Con franja entra directo a la cola de la tienda como pedido nuevo.
+            $pedido->estado = $pedido->modo_retiro === Pedido::RETIRO_VOY_SALIENDO
+                ? EstadoPedido::EnEspera
+                : EstadoPedido::Pagado;
+            $pedido->save();
+
+            // Aquí se emitirá el evento PedidoCambioEstado cuando exista (Reverb y push al alumno).
+
+            return $pedido;
+        });
     }
 
     // #58: el alumno pidió en modo "voy saliendo" y su pedido quedó pagado pero EN_ESPERA,
