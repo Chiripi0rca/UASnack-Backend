@@ -13,6 +13,7 @@ use App\Enums\EstadoPago;
 use App\Exceptions\ErrorNegocio;
 use App\Models\Pago;
 use App\Services\Stripe\CobrosStripe;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 // ESQUELETO (Sprint 04). Todo lo que habla con Stripe vive aquí: PedidoService nunca toca su API.
 // Cada método lo completa su tarea y cambia SOLO el contenido, no el nombre ni lo que regresa:
@@ -421,10 +422,23 @@ class PagoService
     }
 
     // #69: pagos y reembolsos del alumno, los más nuevos primero. Lo paginado lo decide esta tarea.
-    public function historialDe(Usuario $usuario): array
+        // #69: pagos del alumno, del más nuevo al más viejo, de 20 en 20 (?pagina=2…).
+    // No salen los "pendiente": son cobros que el alumno no confirmó.
+    public function historialDe(Usuario $usuario): LengthAwarePaginator
     {
-        return [
-            ['id' => 12, 'codigo_pedido' => 'TA-2451', 'monto' => '85.00', 'estado' => 'pagado', 'creado_en' => '2026-11-09 11:21:00'],
-        ];
+        return Pago::with('pedido.tienda')
+            ->whereHas('pedido', fn ($pedido) => $pedido->where('id_usuario', $usuario->id)) // solo los suyos
+            ->where('estado', '!=', EstadoPago::Pendiente->value)
+            ->latest('creado_en')
+            ->latest('id')                       // desempate si tienen la misma hora
+            ->paginate(20, ['*'], 'pagina')
+            ->through(fn (Pago $pago) => [       // la forma de cada pago en la respuesta
+                'id' => $pago->id,
+                'codigo_pedido' => $pago->pedido->codigo_pedido,
+                'tienda' => $pago->pedido->tienda->nombre,   // la HU-09 pide mostrar la tienda
+                'monto' => $pago->monto,
+                'estado' => $pago->estado->value,
+                'creado_en' => $pago->creado_en->toIso8601String(),
+            ]);
     }
 }
