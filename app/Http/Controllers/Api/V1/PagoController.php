@@ -23,7 +23,9 @@ class PagoController extends Controller
     //   { datos: [{ id, codigo_pedido, monto, estado, creado_en }], meta: { total } }
     public function historial(Request $request): JsonResponse
     {
-        throw new ErrorNegocio('NO_IMPLEMENTADO', 'El historial de pagos todavía no está disponible.', 501);
+        $pagos = $this->pagos->historialDe($request->user());
+
+        return response()->json(['datos' => $pagos->items(), 'meta' => ['total' => $pagos->total()]]);
     }
 
     // #188: GET /pagos/metodos

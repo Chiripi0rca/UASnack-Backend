@@ -112,7 +112,7 @@ Route::middleware(['auth:sanctum', 'correo.verificado'])->group(function () {
 
 Route::middleware('auth:sanctum')->group(function () {
     // #69 (Alfredo): pagos y reembolsos del alumno.
-    // Route::get('/pagos', [PagoController::class, 'historial']);
+    Route::get('/pagos', [PagoController::class, 'historial']);
 
     // #188 (Alfredo): tarjetas guardadas.
     // Cuando llega GET /api/v1/pagos/metodos, Laravel llama al método "metodos" de PagoController.
